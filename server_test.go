@@ -83,7 +83,7 @@ func TestCgiDSMUserLoginTokenFlow(t *testing.T) {
 	dsmLoginCGI, dsmAuthenticateCGI = login, auth
 	defer func() { dsmLoginCGI, dsmAuthenticateCGI = oldLogin, oldAuth }()
 	t.Setenv("GITHUB_BACKUP_DEV_USER", "")
-	user, err := cgiDSMUser()
+	user, err := cgiDSMUser("")
 	if err != nil || user != "admin" {
 		t.Fatalf("user=%q err=%v", user, err)
 	}

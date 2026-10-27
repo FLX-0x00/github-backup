@@ -40,7 +40,22 @@ Ext.define("com.evait.githubbackup.MainWindow", {
 Ext.apply(com.evait.githubbackup.Utils, function () {
     return {
         getMainHtml: function () {
-            return '<iframe src="/webman/3rdparty/github-backup/index.html?timestamp=' + new Date().getTime() +
+            var token = "";
+            try {
+                if (typeof _S === "function") {
+                    token = _S("SynoToken") || "";
+                }
+                if (!token && window.SYNO && SYNO.SDS && SYNO.SDS.Session) {
+                    token = SYNO.SDS.Session.SynoToken || "";
+                }
+            } catch (e) {
+                token = "";
+            }
+            var query = "?timestamp=" + new Date().getTime();
+            if (token) {
+                query += "&SynoToken=" + encodeURIComponent(token);
+            }
+            return '<iframe src="/webman/3rdparty/github-backup/index.html' + query +
                 '" title="GitHub Backup" style="width:100%;height:100%;border:0;display:block"></iframe>';
         }
     };

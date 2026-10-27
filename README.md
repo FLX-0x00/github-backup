@@ -20,12 +20,12 @@ Die Bedienung erfolgt vollständig über die GUI:
 
 | Datei | NAS-Architektur | Typisch |
 |---|---|---|
-| `github-backup-1.1.0-x86_64.spk` | `x86_64` | Intel/AMD-DS, Virtual DSM |
-| `github-backup-1.1.0-armv8.spk` | `armv8` | ARM 64-bit (rtd1296, armada37xx, rtd1619) |
-| `github-backup-1.1.0-armada38x.spk` | `armada38x` | **DS216j**, DS216, DS416j u. a. (ARMv7 32-bit) |
-| `github-backup-1.1.0-armv7.spk` | `armv7` | Alpine/Alpine4k |
+| `github-backup-1.1.1-x86_64.spk` | `x86_64` | Intel/AMD-DS, Virtual DSM |
+| `github-backup-1.1.1-armv8.spk` | `armv8` | ARM 64-bit (rtd1296, armada37xx, rtd1619) |
+| `github-backup-1.1.1-armada38x.spk` | `armada38x` | **DS216j**, DS216, DS416j u. a. (ARMv7 32-bit) |
+| `github-backup-1.1.1-armv7.spk` | `armv7` | Alpine/Alpine4k |
 
-Für die **DS216j mit DSM 7.0.1** ist `github-backup-1.1.0-armada38x.spk` die richtige Datei.
+Für die **DS216j mit DSM 7.0.1** ist `github-backup-1.1.1-armada38x.spk` die richtige Datei.
 
 ---
 
@@ -196,7 +196,7 @@ Voraussetzungen: Go 1.21+, `tar`, `md5sum`.
 ```bash
 cd ghbackup
 ./build.sh
-# -> dist/github-backup-1.1.0-{x86_64,armv8,armv7,armada38x}.spk
+# -> dist/github-backup-1.1.1-{x86_64,armv8,armv7,armada38x}.spk
 ```
 
 CI: `go vet`, `go test`, Go-Format, Shell-Syntax, Wizard-JSON und SPK-Build.

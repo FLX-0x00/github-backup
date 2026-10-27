@@ -39,7 +39,8 @@ func cmdCGI(_ []string) error {
 		method = http.MethodGet
 	}
 
-	user, err := cgiDSMUser()
+	token := os.Getenv("HTTP_X_SYNO_TOKEN")
+	user, err := cgiDSMUser(token)
 	if err != nil || user == "" {
 		cgiError(http.StatusUnauthorized, "Nicht in DSM angemeldet.")
 		return nil
@@ -115,9 +116,25 @@ func cmdCGI(_ []string) error {
 	return nil
 }
 
-func cgiDSMUser() (string, error) {
+func cgiDSMUser(token string) (string, error) {
 	if dev := os.Getenv("GITHUB_BACKUP_DEV_USER"); dev != "" {
 		return dev, nil
+	}
+
+	// The app shell passes DSM's SynoToken into the iframe. Prefer it: custom
+	// CGI environments do not always receive the Cookie header.
+	if token != "" {
+		authEnv := cgiAuthEnv(
+			"QUERY_STRING=SynoToken="+url.QueryEscape(token),
+			"HTTP_X_SYNO_TOKEN="+token,
+		)
+		authCmd := exec.Command(dsmAuthenticateCGI)
+		authCmd.Env = authEnv
+		if authOut, err := authCmd.Output(); err == nil {
+			if user := strings.TrimSpace(string(authOut)); user != "" {
+				return user, nil
+			}
+		}
 	}
 
 	// DSM does not accept authenticate.cgi with only the session cookie here.

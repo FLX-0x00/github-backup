@@ -6,6 +6,7 @@
   const state = { data: null, page: "dashboard", editing: null, repoConn: null, poll: null };
   const weekday = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
   const API_ENDPOINT = "api.cgi";
+  const synoToken = new URLSearchParams(window.location.search).get("SynoToken") || "";
 
   function esc(s) {
     return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -47,7 +48,7 @@
     el._t = setTimeout(() => el.classList.add("hidden"), 4200);
   }
   async function api(path, opts = {}) {
-    const headers = { "X-GitHub-Backup": "1", ...(opts.body ? { "Content-Type": "application/json" } : {}), ...(opts.headers || {}) };
+    const headers = { "X-GitHub-Backup": "1", ...(synoToken ? { "X-SYNO-TOKEN": synoToken } : {}), ...(opts.body ? { "Content-Type": "application/json" } : {}), ...(opts.headers || {}) };
     const target = path.startsWith("/") ? path : `/${path}`;
     const url = `${API_ENDPOINT}?path=${encodeURIComponent(target)}`;
     const res = await fetch(url, { credentials: "same-origin", ...opts, headers });
@@ -104,7 +105,7 @@
   function render() {
     const d = state.data;
     if (!d) return;
-    $("#version").textContent = "v1.1.0";
+    $("#version").textContent = "v1.1.1";
     $("#statRepos").textContent = d.stats?.repos ?? "–";
     $("#statWikis").textContent = `${d.stats?.wikis ?? 0} Wikis`;
     $("#statConns").textContent = d.connections?.length ?? 0;
