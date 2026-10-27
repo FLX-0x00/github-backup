@@ -5,6 +5,7 @@
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
   const state = { data: null, page: "dashboard", editing: null, repoConn: null, poll: null };
   const weekday = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+  const API_ENDPOINT = "/webapi/github-backup/api.cgi";
 
   function esc(s) {
     return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -47,7 +48,9 @@
   }
   async function api(path, opts = {}) {
     const headers = { "X-GitHub-Backup": "1", ...(opts.body ? { "Content-Type": "application/json" } : {}), ...(opts.headers || {}) };
-    const res = await fetch(path, { credentials: "same-origin", ...opts, headers });
+    const target = path.startsWith("/") ? path : `/${path}`;
+    const url = `${API_ENDPOINT}?path=${encodeURIComponent(target)}`;
+    const res = await fetch(url, { credentials: "same-origin", ...opts, headers });
     let data = null;
     try { data = await res.json(); } catch (_) {}
     if (res.status === 401 || res.status === 403) {
@@ -101,7 +104,7 @@
   function render() {
     const d = state.data;
     if (!d) return;
-    $("#version").textContent = "v1.0.5";
+    $("#version").textContent = "v1.0.6";
     $("#statRepos").textContent = d.stats?.repos ?? "–";
     $("#statWikis").textContent = `${d.stats?.wikis ?? 0} Wikis`;
     $("#statConns").textContent = d.connections?.length ?? 0;

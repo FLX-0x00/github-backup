@@ -41,6 +41,8 @@ func main() {
 		err = cmdDaemon(args)
 	case "serve":
 		err = cmdServe(args)
+	case "cgi":
+		err = cmdCGI(args)
 	case "test":
 		err = cmdTest(args)
 	case "config":
@@ -76,6 +78,7 @@ Befehle:
   run              Backup jetzt ausführen
   daemon           Zeitplan-Daemon (ohne UI)
   serve            UI + Zeitplan (wird vom Paket gestartet)
+  cgi              CGI-Bridge für DSM webapi-desc
   test             Tokens/Verbindungen prüfen
   config           Speicherort/Optionen/Zeitplan ändern
   set-token        Token einer Verbindung ersetzen

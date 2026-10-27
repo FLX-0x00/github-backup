@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
-VERSION="1.0.5"
+VERSION="1.0.6"
 BUILD="0001"
 PKG_VERSION="${VERSION}-${BUILD}"
 DIST="$ROOT/dist"
@@ -41,13 +41,18 @@ for spec in "${ARCHS[@]}"; do
 
   stage="$BUILD_DIR/stage-$spk_arch"
   rm -rf "$stage"
-  mkdir -p "$stage/package/bin" "$stage/package/web" "$stage/package/ui"
+  mkdir -p "$stage/package/bin" "$stage/package/ui" "$stage/package/webapi"
   cp "$bin" "$stage/package/bin/github-backup"
   chmod 0755 "$stage/package/bin/github-backup"
-  cp "$ROOT/web/nginx.conf" "$stage/package/web/nginx.conf"
+  cp "$ROOT/web/index.html" "$stage/package/ui/index.html"
+  cp "$ROOT/web/app.css" "$stage/package/ui/app.css"
+  cp "$ROOT/web/app.js" "$stage/package/ui/app.js"
   cp -a "$ROOT/ui/." "$stage/package/ui/"
+  cp "$ROOT/webapi/GitHubBackup.api" "$stage/package/webapi/GitHubBackup.api"
+  cp "$ROOT/webapi/api.cgi" "$stage/package/webapi/api.cgi"
+  chmod 0755 "$stage/package/webapi/api.cgi"
 
-  ( cd "$stage/package" && tar -czf "$stage/package.tgz" bin web ui )
+  ( cd "$stage/package" && tar -czf "$stage/package.tgz" bin ui webapi )
 
   spk="$BUILD_DIR/spk-$spk_arch"
   mkdir -p "$spk/conf" "$spk/scripts" "$spk/WIZARD_UIFILES"
@@ -86,8 +91,6 @@ distributor_url="https://evait.de"
 ctl_stop="yes"
 dsmuidir="ui"
 dsmappname="com.evait.githubbackup"
-instuninst_restart_services="nginx.service"
-startstop_restart_services="nginx.service"
 checksum="$checksum"
 EOF
 

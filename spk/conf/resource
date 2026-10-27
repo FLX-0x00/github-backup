@@ -12,14 +12,16 @@
             }
         ]
     },
-    "web-config": {
-        "nginx-static-config": {
-            "enable": [
-                {
-                    "type": "dsm",
-                    "relpath": "web/nginx.conf"
-                }
-            ]
-        }
+    "webapi-desc": {
+        "apis": [
+            {
+                "type": "cgi",
+                "lib": [
+                    "webapi/GitHubBackup.api"
+                ],
+                "api-dir": "webapi",
+                "link-name": "github-backup"
+            }
+        ]
     }
 }
