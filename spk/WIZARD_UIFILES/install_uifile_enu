@@ -143,11 +143,6 @@
                         "defaultValue": true
                     },
                     {
-                        "key": "wizard_lfs",
-                        "desc": "Include Git LFS objects (git-lfs required)",
-                        "defaultValue": false
-                    },
-                    {
                         "key": "wizard_prune",
                         "desc": "Prune branches deleted upstream",
                         "defaultValue": false

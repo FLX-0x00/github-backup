@@ -6,7 +6,7 @@ VAR="${SYNOPKG_PKGVAR:-/var/packages/$PKG_NAME/var}"
 # On upgrade, keep config and token. On uninstall, remove the plaintext token
 # and runtime state; the backup data itself remains in the target share.
 if [ "${SYNOPKG_PKG_STATUS:-}" != "UPGRADE" ]; then
-    rm -f "$VAR/config.json" "$VAR/askpass.sh" "$VAR/daemon.pid"
+    rm -f "$VAR/config.json" "$VAR/daemon.pid"
     rm -rf "$VAR/install"
 fi
 exit 0

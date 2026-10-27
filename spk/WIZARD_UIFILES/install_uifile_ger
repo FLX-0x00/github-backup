@@ -143,11 +143,6 @@
                         "defaultValue": true
                     },
                     {
-                        "key": "wizard_lfs",
-                        "desc": "Git-LFS-Objekte mitsichern (git-lfs erforderlich)",
-                        "defaultValue": false
-                    },
-                    {
                         "key": "wizard_prune",
                         "desc": "Gelöschte Branches auch im Backup löschen",
                         "defaultValue": false

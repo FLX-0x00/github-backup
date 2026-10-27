@@ -1,7 +1,5 @@
 #!/bin/sh
 set -eu
-LD_LIBRARY_PATH="/var/packages/Git/target/lib:${LD_LIBRARY_PATH:-}"
-export LD_LIBRARY_PATH
 
 PKG_NAME="github-backup"
 PKG_USER="sc-github-backup"
@@ -68,7 +66,6 @@ bool_value() {
 }
 
 WIKIS=$(bool_value "${wizard_wikis:-}" "true")
-LFS=$(bool_value "${wizard_lfs:-}" "false")
 PRUNE=$(bool_value "${wizard_prune:-}" "false")
 NOTIFY=$(bool_value "${wizard_notify:-}" "true")
 SCHEDULE=$(bool_value "${wizard_schedule:-}" "true")
@@ -98,7 +95,6 @@ write_value weekday "$WEEKDAY"
 write_value hour "$HOUR"
 write_value minute "$MINUTE"
 write_value wikis "$WIKIS"
-write_value lfs "$LFS"
 write_value prune "$PRUNE"
 write_value notify "$NOTIFY"
 write_value schedule "$SCHEDULE"

@@ -10,10 +10,8 @@ if [ -s "$CONFIG" ] && [ "${SYNOPKG_PKG_STATUS:-}" != "INSTALL" ]; then
     exit 0
 fi
 
-PATH="/var/packages/Git/target/bin:/opt/bin:/usr/local/bin:/usr/syno/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+PATH="/opt/bin:/usr/local/bin:/usr/syno/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 export PATH
-LD_LIBRARY_PATH="/var/packages/Git/target/lib:${LD_LIBRARY_PATH:-}"
-export LD_LIBRARY_PATH
 
 log() {
     echo "$*" >&2
@@ -59,13 +57,7 @@ case "$STORAGE" in
     *) fail "Der Speicherort muss ein absoluter Pfad sein." ;;
 esac
 
-command -v git >/dev/null 2>&1 || fail "Git ist nicht installiert. Bitte zuerst das Synology-Paket 'Git Server' installieren."
 command -v curl >/dev/null 2>&1 || fail "curl ist nicht verfügbar."
-case "${wizard_lfs:-false}" in
-    true|True|1|yes|Yes)
-        command -v git-lfs >/dev/null 2>&1 || fail "Git-LFS ist aktiviert, aber git-lfs ist nicht installiert."
-        ;;
-esac
 
 API="${GITHUB_API_BASE:-https://api.github.com}"
 if [ "$KIND" = "org" ]; then

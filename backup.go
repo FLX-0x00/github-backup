@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -14,6 +12,12 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/go-git/go-git/v5/storage/memory"
 )
 
 type RunSummary struct {
@@ -28,7 +32,6 @@ type RunSummary struct {
 	Failed      int
 	Wikis       int
 	WikiFailed  int
-	LFSFailed   int
 	LogPath     string
 	FailedRepos []string
 }
@@ -37,7 +40,6 @@ type repoResult struct {
 	FullName string
 	Status   string
 	Wiki     string
-	LFS      string
 	Error    string
 }
 
@@ -45,8 +47,6 @@ type runner struct {
 	cfgPath string
 	cfg     *Config
 	client  *githubClient
-	askpass string
-	gitPath string
 	verbose bool
 	logFile *os.File
 	logPath string
@@ -54,50 +54,15 @@ type runner struct {
 }
 
 func newRunner(cfgPath string, cfg *Config, verbose bool) (*runner, error) {
-	varlDir := filepath.Dir(cfgPath)
-	if err := os.MkdirAll(varlDir, 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0700); err != nil {
 		return nil, err
 	}
-	askpass := filepath.Join(varlDir, "askpass.sh")
-	script := `#!/bin/sh
-case "$1" in
-  *[Uu]sername*) printf '%s\n' "${GIT_USERNAME:-x-access-token}" ;;
-  *[Pp]assword*) printf '%s\n' "$GITHUB_TOKEN" ;;
-  *) printf '\n' ;;
-esac
-`
-	if err := os.WriteFile(askpass, []byte(script), 0700); err != nil {
-		return nil, err
-	}
-	_ = os.Chmod(askpass, 0700)
-	gitPath := findGit()
 	return &runner{
 		cfgPath: cfgPath,
 		cfg:     cfg,
 		client:  newGitHubClient(cfg.APIBase),
-		askpass: askpass,
-		gitPath: gitPath,
 		verbose: verbose,
 	}, nil
-}
-
-func findGit() string {
-	candidates := []string{
-		"/var/packages/Git/target/bin/git",
-		"/opt/bin/git",
-		"/usr/local/bin/git",
-		"/usr/bin/git",
-		"/bin/git",
-	}
-	for _, p := range candidates {
-		if st, err := os.Stat(p); err == nil && !st.IsDir() && st.Mode()&0111 != 0 {
-			return p
-		}
-	}
-	if p, err := exec.LookPath("git"); err == nil {
-		return p
-	}
-	return ""
 }
 
 func (r *runner) logf(format string, args ...any) {
@@ -118,9 +83,9 @@ func (r *runner) openLog() error {
 	if err := ensureDir(logDir); err != nil {
 		return err
 	}
-	name := "run-" + time.Now().Format("20060102-150405") + ".log"
+	name := fmt.Sprintf("run-%s-%d.log", time.Now().Format("20060102-150405"), time.Now().UnixNano())
 	path := filepath.Join(logDir, name)
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0640)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
@@ -136,7 +101,7 @@ func (r *runner) closeLog() {
 	}
 }
 
-func (r *runner) Run(ctx context.Context, only []string) (RunSummary, error) {
+func (r *runner) Run(ctx context.Context, only []string, scheduled bool) (RunSummary, error) {
 	sum := RunSummary{Started: time.Now(), Status: "failed"}
 	if err := ensureDataDirs(r.cfg.DataRoot); err != nil {
 		return sum, err
@@ -156,16 +121,7 @@ func (r *runner) Run(ctx context.Context, only []string) (RunSummary, error) {
 
 	r.logf("=== GitHub Backup start ===")
 	r.logf("Ziel: %s", r.cfg.DataRoot)
-	if r.gitPath == "" {
-		r.logf("FEHLER: git nicht gefunden. Bitte das Synology-Paket 'Git Server' installieren.")
-		sum.Finished = time.Now()
-		r.cfg.LastRun = &sum.Finished
-		r.cfg.LastStatus = "failed"
-		_ = saveConfig(r.cfgPath, r.cfg)
-		_ = r.writeLastRun(sum)
-		return sum, errors.New("git nicht gefunden")
-	}
-	r.logf("Git: %s", r.gitPath)
+	r.logf("Engine: go-git (kein externes git)")
 
 	conns := make([]*Connection, 0, len(r.cfg.Connections))
 	onlySet := map[string]bool{}
@@ -186,9 +142,6 @@ func (r *runner) Run(ctx context.Context, only []string) (RunSummary, error) {
 		r.logf("Keine aktiven Verbindungen.")
 		sum.Status = "empty"
 		sum.Finished = time.Now()
-		r.cfg.LastRun = &sum.Finished
-		r.cfg.LastStatus = "empty"
-		_ = saveConfig(r.cfgPath, r.cfg)
 		_ = r.writeLastRun(sum)
 		return sum, errors.New("keine aktiven Verbindungen")
 	}
@@ -213,6 +166,13 @@ func (r *runner) Run(ctx context.Context, only []string) (RunSummary, error) {
 			conn.LastRun = &now
 			continue
 		}
+		if len(repos) == 0 {
+			r.logf("FEHLER: Token sieht keine Repositories.")
+			sum.ConnFailed++
+			conn.LastStatus = "error"
+			conn.LastRun = &now
+			continue
+		}
 
 		targets := repos
 		if conn.Mode == "selected" {
@@ -221,18 +181,29 @@ func (r *runner) Run(ctx context.Context, only []string) (RunSummary, error) {
 				byName[repo.FullName] = repo
 			}
 			targets = targets[:0]
+			missing := 0
 			for _, name := range conn.Repos {
 				if repo, ok := byName[name]; ok {
 					targets = append(targets, repo)
 				} else {
-					r.logf("WARN: ausgewähltes Repo nicht mehr vorhanden: %s", name)
+					missing++
+					sum.Failed++
+					sum.FailedRepos = append(sum.FailedRepos, name)
+					r.logf("FEHLER: ausgewähltes Repo nicht mehr vorhanden: %s", name)
 				}
+			}
+			sum.Total += missing
+			if missing > 0 {
+				conn.LastStatus = "error"
 			}
 		}
 		if len(targets) == 0 {
 			r.logf("Keine Repositories zum Sichern.")
 			conn.LastRun = &now
-			conn.LastStatus = "empty"
+			if conn.LastStatus != "error" {
+				conn.LastStatus = "error"
+				sum.ConnFailed++
+			}
 			continue
 		}
 
@@ -256,9 +227,6 @@ func (r *runner) Run(ctx context.Context, only []string) (RunSummary, error) {
 			if res.Wiki == "failed" {
 				sum.WikiFailed++
 			}
-			if res.LFS == "failed" {
-				sum.LFSFailed++
-			}
 		}
 		sum.Total += len(results)
 		conn.LastRun = &now
@@ -267,20 +235,18 @@ func (r *runner) Run(ctx context.Context, only []string) (RunSummary, error) {
 		} else {
 			conn.LastStatus = "success"
 		}
-		r.cfg.LastRun = &now
-		if err := saveConfig(r.cfgPath, r.cfg); err != nil {
-			r.logf("WARN: Konfiguration speichern: %v", err)
-		}
 	}
 
 	sum.Finished = time.Now()
-	if sum.Failed == 0 && sum.WikiFailed == 0 && sum.LFSFailed == 0 && sum.ConnFailed == 0 {
+	if sum.Failed == 0 && sum.WikiFailed == 0 && sum.ConnFailed == 0 {
 		sum.Status = "success"
 	} else {
 		sum.Status = "completed_with_errors"
 	}
-	r.cfg.LastRun = &sum.Finished
 	r.cfg.LastStatus = sum.Status
+	if scheduled && sum.Status == "success" && ctx.Err() == nil {
+		r.cfg.LastRun = &sum.Finished
+	}
 	if err := saveConfig(r.cfgPath, r.cfg); err != nil {
 		r.logf("WARN: Konfiguration speichern: %v", err)
 	}
@@ -291,8 +257,8 @@ func (r *runner) Run(ctx context.Context, only []string) (RunSummary, error) {
 
 	r.logf("")
 	r.logf("=== GitHub Backup fertig ===")
-	r.logf("Status: %s | Repos: %d | neu: %d | aktualisiert: %d | Fehler: %d | Wikis: %d | Wiki-Fehler: %d | LFS-Fehler: %d",
-		sum.Status, sum.Total, sum.Cloned, sum.Updated, sum.Failed, sum.Wikis, sum.WikiFailed, sum.LFSFailed)
+	r.logf("Status: %s | Repos: %d | neu: %d | aktualisiert: %d | Fehler: %d | Wikis: %d | Wiki-Fehler: %d",
+		sum.Status, sum.Total, sum.Cloned, sum.Updated, sum.Failed, sum.Wikis, sum.WikiFailed)
 	r.logf("Dauer: %s", formatDuration(sum.Finished.Sub(sum.Started)))
 	r.logf("Log: %s", sum.LogPath)
 
@@ -303,15 +269,15 @@ func (r *runner) Run(ctx context.Context, only []string) (RunSummary, error) {
 	}
 
 	if sum.Status != "success" {
-		return sum, fmt.Errorf("Backup mit Fehlern beendet (%d Repo-Fehler, %d Wiki-Fehler, %d LFS-Fehler, %d Verbindungsfehler)",
-			sum.Failed, sum.WikiFailed, sum.LFSFailed, sum.ConnFailed)
+		return sum, fmt.Errorf("Backup mit Fehlern beendet (%d Repo-Fehler, %d Wiki-Fehler, %d Verbindungsfehler)",
+			sum.Failed, sum.WikiFailed, sum.ConnFailed)
 	}
 	return sum, nil
 }
 
 func connHasErrors(results []repoResult) bool {
 	for _, r := range results {
-		if r.Status == "failed" || r.Wiki == "failed" || r.LFS == "failed" {
+		if r.Status == "failed" || r.Wiki == "failed" {
 			return true
 		}
 	}
@@ -393,16 +359,6 @@ func (r *runner) backupRepo(ctx context.Context, conn *Connection, repo Repo) re
 			}
 		}
 	}
-
-	if r.cfg.Options.IncludeLFS {
-		if err := r.fetchLFS(ctx, conn.Token, dest); err != nil {
-			res.LFS = "failed"
-			r.logf("    LFS-FEHLER: %v", err)
-		} else {
-			res.LFS = "ok"
-			r.logf("    LFS gesichert")
-		}
-	}
 	return res
 }
 
@@ -410,13 +366,23 @@ func (r *runner) mirror(ctx context.Context, token, url, dest string, timeout ti
 	if err := ensureDir(filepath.Dir(dest)); err != nil {
 		return "", err
 	}
+	auth := &http.BasicAuth{Username: "x-access-token", Password: token}
 	if st, err := os.Stat(dest); err == nil && st.IsDir() {
-		r.enableReflog(ctx, token, dest)
-		args := []string{"--git-dir=" + dest, "remote", "update"}
-		if r.cfg.Options.PruneDeleted {
-			args = append(args, "--prune")
+		repo, err := git.PlainOpen(dest)
+		if err != nil {
+			return "", fmt.Errorf("Mirror öffnen: %w", err)
 		}
-		if err := r.gitRetry(ctx, token, timeout, args...); err != nil {
+		ctx2, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		err = repo.FetchContext(ctx2, &git.FetchOptions{
+			RemoteName: "origin",
+			Auth:       auth,
+			RefSpecs:   []config.RefSpec{"+refs/*:refs/*"},
+			Force:      true,
+			Prune:      r.cfg.Options.PruneDeleted,
+			Tags:       git.AllTags,
+		})
+		if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) && !errors.Is(err, transport.ErrEmptyRemoteRepository) {
 			return "", err
 		}
 		return "updated", nil
@@ -434,145 +400,54 @@ func (r *runner) mirror(ctx context.Context, token, url, dest string, timeout ti
 	}
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
-		if err := r.runGit(ctx, token, timeout, "clone", "--mirror", url, tmp); err != nil {
-			lastErr = err
-			_ = os.RemoveAll(tmp)
-			if attempt < attempts {
-				if !sleepCtx(ctx, time.Duration(attempt)*5*time.Second) {
-					break
-				}
-				continue
+		ctx2, cancel := context.WithTimeout(ctx, timeout)
+		_, err := git.PlainCloneContext(ctx2, tmp, true, &git.CloneOptions{
+			URL:        url,
+			Auth:       auth,
+			Mirror:     true,
+			NoCheckout: true,
+			Tags:       git.AllTags,
+		})
+		cancel()
+		if err == nil {
+			if err := os.Rename(tmp, dest); err != nil {
+				return "", err
 			}
-			break
+			return "cloned", nil
 		}
-		if err := os.Rename(tmp, dest); err != nil {
-			return "", err
+		if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+			_ = os.RemoveAll(tmp)
+			repo, err := git.PlainInit(tmp, true)
+			if err != nil {
+				return "", err
+			}
+			_, _ = repo.CreateRemote(&config.RemoteConfig{Name: "origin", URLs: []string{url}})
+			if err := os.Rename(tmp, dest); err != nil {
+				return "", err
+			}
+			return "cloned", nil
 		}
-		return "cloned", nil
+		lastErr = err
+		_ = os.RemoveAll(tmp)
+		if attempt < attempts {
+			if !sleepCtx(ctx, time.Duration(attempt)*5*time.Second) {
+				break
+			}
+		}
 	}
 	return "", lastErr
 }
 
 func (r *runner) wikiExists(ctx context.Context, token, url string) bool {
+	auth := &http.BasicAuth{Username: "x-access-token", Password: token}
+	remote := git.NewRemote(memory.NewStorage(), &config.RemoteConfig{
+		Name: "origin",
+		URLs: []string{url},
+	})
 	ctx2, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	cmd := r.gitCommand(ctx2, token, "ls-remote", url)
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
-	return cmd.Run() == nil
-}
-
-func (r *runner) fetchLFS(ctx context.Context, token, dest string) error {
-	if findGitLFS() == "" {
-		return errors.New("git-lfs ist nicht installiert")
-	}
-	return r.gitRetry(ctx, token, 4*time.Hour, "--git-dir="+dest, "lfs", "fetch", "--all")
-}
-
-func findGitLFS() string {
-	for _, p := range []string{
-		"/var/packages/Git/target/bin/git-lfs",
-		"/opt/bin/git-lfs",
-		"/usr/local/bin/git-lfs",
-		"/usr/bin/git-lfs",
-	} {
-		if st, err := os.Stat(p); err == nil && !st.IsDir() && st.Mode()&0111 != 0 {
-			return p
-		}
-	}
-	if p, err := exec.LookPath("git-lfs"); err == nil {
-		return p
-	}
-	return ""
-}
-
-func (r *runner) enableReflog(ctx context.Context, token, dest string) {
-	_ = r.runGit(ctx, token, 30*time.Second, "--git-dir="+dest, "config", "core.logAllRefUpdates", "true")
-}
-
-func (r *runner) gitRetry(ctx context.Context, token string, timeout time.Duration, args ...string) error {
-	attempts := r.cfg.Options.GitRetries
-	if attempts < 1 {
-		attempts = 1
-	}
-	var lastErr error
-	for attempt := 1; attempt <= attempts; attempt++ {
-		if err := r.runGit(ctx, token, timeout, args...); err != nil {
-			lastErr = err
-			if attempt < attempts {
-				if !sleepCtx(ctx, time.Duration(attempt)*5*time.Second) {
-					break
-				}
-				continue
-			}
-			break
-		}
-		return nil
-	}
-	return lastErr
-}
-
-func (r *runner) runGit(ctx context.Context, token string, timeout time.Duration, args ...string) error {
-	if r.gitPath == "" {
-		return errors.New("git nicht gefunden")
-	}
-	ctx2, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	cmd := r.gitCommand(ctx2, token, args...)
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
-	if err := cmd.Run(); err != nil {
-		out := buf.String()
-		out = strings.ReplaceAll(out, token, "***")
-		if len(out) > 1600 {
-			out = out[len(out)-1600:]
-		}
-		return fmt.Errorf("%v: %s", err, strings.TrimSpace(out))
-	}
-	return nil
-}
-
-func (r *runner) gitCommand(ctx context.Context, token string, args ...string) *exec.Cmd {
-	base := []string{
-		"-c", "credential.helper=",
-		"-c", "http.lowSpeedLimit=1000",
-		"-c", "http.lowSpeedTime=60",
-	}
-	cmd := exec.CommandContext(ctx, r.gitPath, append(base, args...)...)
-	path := "/var/packages/Git/target/bin:/opt/bin:/usr/local/bin:/usr/syno/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-	if old := os.Getenv("PATH"); old != "" {
-		path += ":" + old
-	}
-	home := os.Getenv("HOME")
-	if home == "" {
-		home = filepath.Dir(r.cfgPath)
-	}
-	env := make([]string, 0, len(os.Environ())+6)
-	for _, e := range os.Environ() {
-		if strings.HasPrefix(e, "GITHUB_TOKEN=") || strings.HasPrefix(e, "GIT_ASKPASS=") ||
-			strings.HasPrefix(e, "GIT_TERMINAL_PROMPT=") || strings.HasPrefix(e, "LC_ALL=") ||
-			strings.HasPrefix(e, "HOME=") || strings.HasPrefix(e, "LD_LIBRARY_PATH=") {
-			continue
-		}
-		env = append(env, e)
-	}
-	libPath := "/var/packages/Git/target/lib"
-	if old := os.Getenv("LD_LIBRARY_PATH"); old != "" {
-		libPath += ":" + old
-	}
-	env = append(env,
-		"GITHUB_TOKEN="+token,
-		"GIT_ASKPASS="+r.askpass,
-		"GIT_TERMINAL_PROMPT=0",
-		"LC_ALL=C",
-		"HOME="+home,
-		"PATH="+path,
-		"LD_LIBRARY_PATH="+libPath,
-	)
-	cmd.Env = env
-	return cmd
+	_, err := remote.ListContext(ctx2, &git.ListOptions{Auth: auth})
+	return err == nil
 }
 
 func (r *runner) writeManifest(results []repoResult) error {
@@ -581,12 +456,12 @@ func (r *runner) writeManifest(results []repoResult) error {
 		return err
 	}
 	var b strings.Builder
-	b.WriteString("repository\tstatus\twiki\tlfs\ttimestamp_utc\n")
+	b.WriteString("repository\tstatus\twiki\ttimestamp_utc\n")
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, res := range results {
-		fmt.Fprintf(&b, "%s\t%s\t%s\t%s\t%s\n", res.FullName, res.Status, emptyDash(res.Wiki), emptyDash(res.LFS), now)
+		fmt.Fprintf(&b, "%s\t%s\t%s\t%s\n", res.FullName, res.Status, emptyDash(res.Wiki), now)
 	}
-	return writeFileAtomic(path, []byte(b.String()), 0640)
+	return writeFileAtomic(path, []byte(b.String()), 0600)
 }
 
 func (r *runner) writeLastRun(sum RunSummary) error {
@@ -606,7 +481,6 @@ func (r *runner) writeLastRun(sum RunSummary) error {
 	fmt.Fprintf(&b, "failed: %d\n", sum.Failed)
 	fmt.Fprintf(&b, "wikis: %d\n", sum.Wikis)
 	fmt.Fprintf(&b, "wiki_failures: %d\n", sum.WikiFailed)
-	fmt.Fprintf(&b, "lfs_failures: %d\n", sum.LFSFailed)
 	fmt.Fprintf(&b, "log: %s\n", sum.LogPath)
 	fmt.Fprintf(&b, "target: %s\n", r.cfg.DataRoot)
 	if len(sum.FailedRepos) > 0 {
@@ -615,7 +489,7 @@ func (r *runner) writeLastRun(sum RunSummary) error {
 			fmt.Fprintf(&b, "  %s\n", name)
 		}
 	}
-	return writeFileAtomic(path, []byte(b.String()), 0640)
+	return writeFileAtomic(path, []byte(b.String()), 0600)
 }
 
 func (r *runner) cleanupLogs() {

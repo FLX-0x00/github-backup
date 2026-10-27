@@ -1,7 +1,5 @@
 #!/bin/sh
 set -u
-LD_LIBRARY_PATH="/var/packages/Git/target/lib:${LD_LIBRARY_PATH:-}"
-export LD_LIBRARY_PATH
 
 PKG_NAME="github-backup"
 TARGET="${SYNOPKG_PKGDEST:-/var/packages/$PKG_NAME/target}"
@@ -33,7 +31,6 @@ install_config() {
     hour=$(cat "$INSTALL/hour" 2>/dev/null || true)
     minute=$(cat "$INSTALL/minute" 2>/dev/null || true)
     wikis=$(cat "$INSTALL/wikis" 2>/dev/null || true)
-    lfs=$(cat "$INSTALL/lfs" 2>/dev/null || true)
     prune=$(cat "$INSTALL/prune" 2>/dev/null || true)
     notify=$(cat "$INSTALL/notify" 2>/dev/null || true)
     schedule=$(cat "$INSTALL/schedule" 2>/dev/null || true)
@@ -46,7 +43,6 @@ install_config() {
     [ -n "$hour" ] || hour=3
     [ -n "$minute" ] || minute=0
     [ -n "$wikis" ] || wikis=true
-    [ -n "$lfs" ] || lfs=false
     [ -n "$prune" ] || prune=false
     [ -n "$notify" ] || notify=true
     [ -n "$schedule" ] || schedule=true
@@ -76,7 +72,6 @@ install_config() {
         --minute "$minute" \
         --repos "$repos" \
         --wikis="$wikis" \
-        --lfs="$lfs" \
         --prune="$prune" \
         --notify="$notify" \
         $SCHEDULE_FLAG >>"$LOGFILE" 2>&1

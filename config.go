@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	appVersion = "1.0.3"
+	appVersion = "1.0.4"
 	configVer  = 1
 )
 
@@ -27,7 +27,6 @@ type Schedule struct {
 
 type Options struct {
 	IncludeWikis bool `json:"include_wikis"`
-	IncludeLFS   bool `json:"include_lfs"`
 	PruneDeleted bool `json:"prune_deleted"`
 	Notify       bool `json:"notify"`
 	Concurrency  int  `json:"concurrency"`
@@ -77,7 +76,6 @@ func defaultConfig(defaultDataRoot string) *Config {
 		},
 		Options: Options{
 			IncludeWikis: true,
-			IncludeLFS:   false,
 			PruneDeleted: false,
 			Notify:       true,
 			Concurrency:  1,

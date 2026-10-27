@@ -1,13 +1,12 @@
 # GitHub Backup für Synology DSM
 
-Natives DSM-Paket (`.spk`) für wöchentliche GitHub-Mirror-Backups. **Kein Webserver, kein Web-UI, kein Docker.** Die Bedienung ist der native DSM-Installationsdialog, das Paket-Icon, optionale DSM-Benachrichtigungen (best effort) und – für spätere Änderungen – ein kleines CLI.
+Natives DSM-Paket (`.spk`) für wöchentliche GitHub-Mirror-Backups. **Kein Webserver, kein Web-UI, kein Docker, kein externes Git.** Der Git-Client (go-git) ist im Paket enthalten. Die Bedienung ist der native DSM-Installationsdialog, das Paket-Icon, optionale DSM-Benachrichtigungen (best effort) und – für spätere Änderungen – ein kleines CLI.
 
 Enthalten:
 
 - alle Repositories, auf die der Token Zugriff hat (eigene Repos inkl. Forks, Org-Repos, Outside-Collaborations bei classic)
 - bare Git-Mirrors mit allen Branches/Tags/Refs
 - optional Wikis
-- optional Git-LFS
 - wöchentlicher Zeitplan (Daemon im Paket)
 - optionale DSM-Benachrichtigung nach jedem Lauf (best effort)
 - Speicherort pro Installation; pro Owner/Org wird ein eigener Unterordner angelegt
@@ -21,10 +20,10 @@ Nicht enthalten: Issues/PRs/Discussions/Releases, GitHub-Actions-Artifacts, Pack
 
 | Datei | NAS-Architektur | Typisch |
 |---|---|---|
-| `github-backup-1.0.3-x86_64.spk` | `x86_64` | Intel/AMD-DS, Virtual DSM |
-| `github-backup-1.0.3-armv8.spk` | `armv8` | ARM 64-bit (rtd1296, armada37xx, rtd1619) |
-| `github-backup-1.0.3-armada38x.spk` | `armada38x` | **DS216j**, DS216, DS416j u. a. (ARMv7 32-bit) |
-| `github-backup-1.0.3-armv7.spk` | `armv7` | Alpine/Alpine4k |
+| `github-backup-1.0.4-x86_64.spk` | `x86_64` | Intel/AMD-DS, Virtual DSM |
+| `github-backup-1.0.4-armv8.spk` | `armv8` | ARM 64-bit (rtd1296, armada37xx, rtd1619) |
+| `github-backup-1.0.4-armada38x.spk` | `armada38x` | **DS216j**, DS216, DS416j u. a. (ARMv7 32-bit) |
+| `github-backup-1.0.4-armv7.spk` | `armv7` | Alpine/Alpine4k |
 
 Prüfen per SSH:
 
@@ -41,18 +40,17 @@ Im Zweifel: DSM → Systemsteuerung → Info Center → CPU/Modell, oder die Syn
 
 ## 2. Installation
 
-1. **Git Server** aus dem Synology Package Center installieren. Das Paket benötigt `git` von dort; ohne Git bricht die Installation mit einer klaren Meldung ab.
-2. Package Center → **Manual Install** → passende `.spk` wählen.
-3. Falls DSM „unbekannter Herausgeber“ meldet: Package Center → Settings → General → Trust Level auf **Any Publisher** (oder „Synology Inc. and trusted publishers“ entsprechend) stellen. Das Paket ist **nicht von Synology signiert**; das ist bei selbstgebauten SPKs normal.
-4. Im Installationsdialog ausfüllen:
+1. Package Center → **Manual Install** → passende `.spk` wählen.
+2. Falls DSM „unbekannter Herausgeber“ meldet: Package Center → Settings → General → Trust Level auf **Any Publisher** (oder „Synology Inc. and trusted publishers“ entsprechend) stellen. Das Paket ist **nicht von Synology signiert**; das ist bei selbstgebauten SPKs normal.
+3. Im Installationsdialog ausfüllen:
    - **Token**: classic PAT mit `repo` + `read:org` (Default) oder fine-grained Token.
    - **Token-Typ**: classic / fine-grained User / fine-grained Org.
    - **Owner/Org**: nur bei fine-grained Org nötig.
    - **Speicherort**: z. B. `/volume1/backup/github`.
    - **Wochentag/Uhrzeit**: Default Sonntag 03:00.
-   - **Optionen**: Wikis, LFS, Prune, Benachrichtigung (best effort).
+   - **Optionen**: Wikis, Prune, Benachrichtigung (best effort).
    - **Repo-Auswahl**: leer = **alle inkl. zukünftiger Repos**; sonst kommagetrennte `owner/repo`-Liste.
-5. Nach der Installation startet der Dienst (falls „nach Installation starten“ gewählt) und führt den **ersten Lauf sofort** aus. Danach nach Zeitplan.
+4. Nach der Installation startet der Dienst (falls „nach Installation starten“ gewählt) und führt den **ersten Lauf sofort** aus. Danach nach Zeitplan.
 
 ### Token
 
@@ -152,6 +150,30 @@ sudo -u sc-github-backup env HOME=/var/packages/github-backup/var/home \
   --data-root /volume1/backup/github
 ```
 
+### Ziel, Optionen und Zeitplan ändern
+
+```bash
+sudo -u sc-github-backup env HOME=/var/packages/github-backup/var/home \
+  /var/packages/github-backup/target/bin/github-backup config \
+  --config /var/packages/github-backup/var/config.json \
+  --data-root /volume1/backup/github \
+  --wikis=0 --prune=0 --notify=0 \
+  --weekday 1 --hour 4 --minute 30 --schedule=1
+```
+
+Ein neues `--data-root` verschiebt bestehende Mirrors nicht; es werden nur neue/aktualisierte Repos dort abgelegt.
+
+### Token ersetzen
+
+```bash
+# Token als Paketbenutzer in eine 600-Datei legen, dann:
+sudo -u sc-github-backup env HOME=/var/packages/github-backup/var/home \
+  /var/packages/github-backup/target/bin/github-backup set-token \
+  --config /var/packages/github-backup/var/config.json \
+  --connection "Alles (classic)" \
+  --token-file /var/packages/github-backup/var/new-token
+```
+
 ### Sofort sichern
 
 ```bash
@@ -223,7 +245,6 @@ git -C /volume1/backup/github/wikis/OWNER/REPO.git push --mirror \
   git@github.com:OWNER/REPO.wiki.git
 ```
 
-LFS-Objekte müssen separat übertragen werden (`git lfs push --all ...`).
 
 ---
 
@@ -253,7 +274,7 @@ Voraussetzungen: Go 1.21+, `tar`, `md5sum`. Die Icons liegen fertig im Repo.
 ```bash
 cd ghbackup
 ./build.sh
-# -> dist/github-backup-1.0.3-{x86_64,armv8,armv7,armada38x}.spk
+# -> dist/github-backup-1.0.4-{x86_64,armv8,armv7,armada38x}.spk
 ```
 
 Die Skripte unter `spk/scripts/` sind `/bin/sh`-kompatibel; das Go-Binary ist statisch (`CGO_ENABLED=0`).
@@ -265,7 +286,7 @@ Die Skripte unter `spk/scripts/` sind `/bin/sh`-kompatibel; das Go-Binary ist st
 - **Kein Web-UI.** Native DSM-Installation + CLI; kein Port, kein Webserver, keine zusätzliche Angriffsfläche.
 - **Repo-Auswahl im Wizard** ist eine optionale kommagetrennte Liste. Für komfortable Auswahl nach der Installation dient `list`/`select` per SSH. Ein DSM-Desktop-App-Fenster wäre ein eigener Ausbauschritt.
 - **Fine-grained = ein Owner pro Token.** Mehrere Orgs = mehrere Verbindungen (`add-connection`).
-- **Kein Issues-/PR-/Release-Backup.** Nur Git-Daten/Wikis/LFS.
+- **Kein Issues-/PR-/Release-Backup.** Nur Git-Daten/Wikis.
 - **Submodule** werden nicht rekursiv gesichert.
 - **PR-Refs** (`refs/pull/*`) können den Mirror größer machen; `git clone --mirror` nimmt sie mit, wenn GitHub sie bewirbt.
 - **Prune** ist standardmäßig aus: gelöschte Branches bleiben im Backup. Im Wizard „Gelöschte Branches auch im Backup löschen“ aktiviert Prune.

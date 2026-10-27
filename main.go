@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -40,6 +41,10 @@ func main() {
 		err = cmdDaemon(args)
 	case "test":
 		err = cmdTest(args)
+	case "config":
+		err = cmdConfig(args)
+	case "set-token":
+		err = cmdSetToken(args)
 	case "schedule":
 		err = cmdSchedule(args)
 	case "version":
@@ -69,6 +74,8 @@ Befehle:
   run              Backup jetzt ausführen
   daemon           Zeitplan-Daemon (wird vom Paket gestartet)
   test             Tokens/Verbindungen prüfen
+  config           Speicherort/Optionen/Zeitplan ändern
+  set-token        Token einer Verbindung ersetzen
   schedule         Wochentag/Uhrzeit ändern
   version          Version anzeigen
 
@@ -83,7 +90,6 @@ Wichtige Flags:
   --minute         0-59 (Default: 0)
   --no-schedule    Zeitplan deaktivieren
   --wikis=1|0      (Default: 1)
-  --lfs=1|0        (Default: 0)
   --prune=1|0      (Default: 0)
   --notify=1|0     (Default: 1)
   --token-file     Token-Datei (sonst Umgebungsvariable GITHUB_TOKEN)
@@ -119,7 +125,6 @@ type commonFlags struct {
 	minute      int
 	noSchedule  bool
 	wikis       bool
-	lfs         bool
 	prune       bool
 	notify      bool
 	concurrency int
@@ -144,7 +149,6 @@ func bindCommon(fs *flag.FlagSet) *commonFlags {
 	fs.IntVar(&c.minute, "minute", 0, "Minute 0-59")
 	fs.BoolVar(&c.noSchedule, "no-schedule", false, "Zeitplan deaktivieren")
 	fs.BoolVar(&c.wikis, "wikis", true, "Wikis sichern")
-	fs.BoolVar(&c.lfs, "lfs", false, "Git-LFS sichern")
 	fs.BoolVar(&c.prune, "prune", false, "gelöschte Refs im Backup löschen")
 	fs.BoolVar(&c.notify, "notify", true, "DSM-Benachrichtigung senden")
 	fs.IntVar(&c.concurrency, "concurrency", 1, "parallele Git-Operationen (1-8)")
@@ -242,7 +246,6 @@ func cmdInit(args []string) error {
 	cfg.Schedule = Schedule{Enabled: !c.noSchedule, Weekday: c.weekday, Hour: c.hour, Minute: c.minute}
 	cfg.Options = normalizeOptions(Options{
 		IncludeWikis: c.wikis,
-		IncludeLFS:   c.lfs,
 		PruneDeleted: c.prune,
 		Notify:       c.notify,
 		Concurrency:  c.concurrency,
@@ -544,7 +547,7 @@ func cmdRun(args []string) error {
 	if err != nil {
 		return err
 	}
-	sum, err := r.Run(ctx, only)
+	sum, err := r.Run(ctx, only, false)
 	fmt.Printf("Status: %s, Repos: %d, neu: %d, aktualisiert: %d, Fehler: %d\n", sum.Status, sum.Total, sum.Cloned, sum.Updated, sum.Failed)
 	fmt.Printf("Log: %s\n", sum.LogPath)
 	return err
@@ -565,19 +568,24 @@ func cmdDaemon(args []string) error {
 	defer stop()
 
 	fmt.Printf("Daemon gestartet, Config: %s\n", *config)
+	var retryAt time.Time
 	for {
 		cfg, err := loadConfig(*config, "/volume1/backup/github")
 		if err != nil {
 			fmt.Printf("Config-Fehler: %v\n", err)
-		} else if cfg.Schedule.Enabled && dueNow(cfg) {
+		} else if cfg.Schedule.Enabled && dueNow(cfg) && (retryAt.IsZero() || !time.Now().Before(retryAt)) {
 			fmt.Printf("Backup fällig: %s\n", time.Now().Format(time.RFC3339))
 			r, err := newRunner(*config, cfg, false)
 			if err != nil {
 				fmt.Printf("Runner-Fehler: %v\n", err)
+				retryAt = time.Now().Add(30 * time.Minute)
 			} else {
-				sum, err := r.Run(ctx, nil)
+				sum, err := r.Run(ctx, nil, true)
 				if err != nil {
 					fmt.Printf("Backup-Fehler: %v\n", err)
+					retryAt = time.Now().Add(30 * time.Minute)
+				} else {
+					retryAt = time.Time{}
 				}
 				fmt.Printf("Backup beendet: %s, Log: %s\n", sum.Status, sum.LogPath)
 			}
@@ -609,6 +617,152 @@ func nextRunAfter(after time.Time, sch Schedule) time.Time {
 		t = t.AddDate(0, 0, 1)
 	}
 	return t
+}
+
+func parseOnOff(value string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true, nil
+	case "0", "false", "no", "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("erwartet 1|0, true|false (bekommen: %q)", value)
+	}
+}
+
+func cmdConfig(args []string) error {
+	fs := flag.NewFlagSet("config", flag.ContinueOnError)
+	config := fs.String("config", defaultConfigPath(), "Konfigurationsdatei")
+	dataRoot := fs.String("data-root", "", "neuer Zielordner")
+	apiBase := fs.String("api-base", "", "neue API Base URL")
+	weekday := fs.Int("weekday", -1, "0=So ... 6=Sa")
+	hour := fs.Int("hour", -1, "Stunde 0-23")
+	minute := fs.Int("minute", -1, "Minute 0-59")
+	schedule := fs.String("schedule", "", "Zeitplan 1|0")
+	wikis := fs.String("wikis", "", "Wikis 1|0")
+	prune := fs.String("prune", "", "Prune 1|0")
+	notify := fs.String("notify", "", "Benachrichtigung 1|0")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := loadConfig(*config, "/volume1/backup/github")
+	if err != nil {
+		return err
+	}
+	if *dataRoot != "" {
+		if err := validateAbsolutePath(*dataRoot); err != nil {
+			return err
+		}
+		cfg.DataRoot = filepath.Clean(*dataRoot)
+	}
+	if *apiBase != "" {
+		cfg.APIBase = *apiBase
+	}
+	if *weekday >= 0 {
+		cfg.Schedule.Weekday = *weekday
+	}
+	if *hour >= 0 {
+		cfg.Schedule.Hour = *hour
+	}
+	if *minute >= 0 {
+		cfg.Schedule.Minute = *minute
+	}
+	if *schedule != "" {
+		v, err := parseOnOff(*schedule)
+		if err != nil {
+			return err
+		}
+		cfg.Schedule.Enabled = v
+	}
+	if *wikis != "" {
+		v, err := parseOnOff(*wikis)
+		if err != nil {
+			return err
+		}
+		cfg.Options.IncludeWikis = v
+	}
+	if *prune != "" {
+		v, err := parseOnOff(*prune)
+		if err != nil {
+			return err
+		}
+		cfg.Options.PruneDeleted = v
+	}
+	if *notify != "" {
+		v, err := parseOnOff(*notify)
+		if err != nil {
+			return err
+		}
+		cfg.Options.Notify = v
+	}
+	if err := validateSchedule(cfg.Schedule.Weekday, cfg.Schedule.Hour, cfg.Schedule.Minute); err != nil {
+		return err
+	}
+	if err := ensureDataDirs(cfg.DataRoot); err != nil {
+		return fmt.Errorf("Zielordner: %w", err)
+	}
+	if err := saveConfig(*config, cfg); err != nil {
+		return err
+	}
+	fmt.Printf("Config: %s\nZiel: %s\nZeitplan: enabled=%v weekday=%d %02d:%02d\nOptionen: wikis=%v prune=%v notify=%v\n",
+		*config, cfg.DataRoot, cfg.Schedule.Enabled, cfg.Schedule.Weekday, cfg.Schedule.Hour, cfg.Schedule.Minute,
+		cfg.Options.IncludeWikis, cfg.Options.PruneDeleted, cfg.Options.Notify)
+	if *dataRoot != "" {
+		fmt.Println("Hinweis: Bereits vorhandene Mirrors werden nicht verschoben; neue/aktualisierte Repos landen im neuen Ziel.")
+	}
+	return nil
+}
+
+func cmdSetToken(args []string) error {
+	fs := flag.NewFlagSet("set-token", flag.ContinueOnError)
+	config := fs.String("config", defaultConfigPath(), "Konfigurationsdatei")
+	connID := fs.String("connection", "", "Verbindung (ID/Label)")
+	tokenFile := fs.String("token-file", "", "Token-Datei")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := loadConfig(*config, "/volume1/backup/github")
+	if err != nil {
+		return err
+	}
+	conn, err := findConnection(cfg, *connID)
+	if err != nil {
+		return err
+	}
+	token, err := readToken(*tokenFile)
+	if err != nil {
+		return err
+	}
+	client := newGitHubClient(cfg.APIBase)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	owner, repos, err := client.Validate(ctx, conn.Kind, conn.Owner, token)
+	if err != nil {
+		return fmt.Errorf("Token prüfen: %w", err)
+	}
+	conn.Token = token
+	conn.Owner = owner
+	if conn.Mode == "selected" {
+		available := map[string]bool{}
+		for _, repo := range repos {
+			available[repo.FullName] = true
+		}
+		kept := conn.Repos[:0]
+		for _, name := range conn.Repos {
+			if available[name] {
+				kept = append(kept, name)
+			}
+		}
+		conn.Repos = kept
+		if len(conn.Repos) == 0 {
+			conn.Mode = "all"
+		}
+	}
+	if err := saveConfig(*config, cfg); err != nil {
+		return err
+	}
+	fmt.Printf("Token für %s aktualisiert (%d Repos sichtbar).\n", conn.Label, len(repos))
+	return nil
 }
 
 func cmdSchedule(args []string) error {
