@@ -11,17 +11,5 @@
                 "once": false
             }
         ]
-    },
-    "webapi-desc": {
-        "apis": [
-            {
-                "type": "cgi",
-                "lib": [
-                    "webapi/GitHubBackup.api"
-                ],
-                "api-dir": "webapi",
-                "link-name": "github-backup"
-            }
-        ]
     }
 }

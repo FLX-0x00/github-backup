@@ -5,7 +5,7 @@
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
   const state = { data: null, page: "dashboard", editing: null, repoConn: null, poll: null };
   const weekday = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
-  const API_ENDPOINT = "/webapi/github-backup/api.cgi";
+  const API_ENDPOINT = "api.cgi";
 
   function esc(s) {
     return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -104,7 +104,7 @@
   function render() {
     const d = state.data;
     if (!d) return;
-    $("#version").textContent = "v1.0.6";
+    $("#version").textContent = "v1.0.7";
     $("#statRepos").textContent = d.stats?.repos ?? "–";
     $("#statWikis").textContent = `${d.stats?.wikis ?? 0} Wikis`;
     $("#statConns").textContent = d.connections?.length ?? 0;

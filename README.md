@@ -20,12 +20,12 @@ Die Bedienung erfolgt vollständig über die GUI:
 
 | Datei | NAS-Architektur | Typisch |
 |---|---|---|
-| `github-backup-1.0.6-x86_64.spk` | `x86_64` | Intel/AMD-DS, Virtual DSM |
-| `github-backup-1.0.6-armv8.spk` | `armv8` | ARM 64-bit (rtd1296, armada37xx, rtd1619) |
-| `github-backup-1.0.6-armada38x.spk` | `armada38x` | **DS216j**, DS216, DS416j u. a. (ARMv7 32-bit) |
-| `github-backup-1.0.6-armv7.spk` | `armv7` | Alpine/Alpine4k |
+| `github-backup-1.0.7-x86_64.spk` | `x86_64` | Intel/AMD-DS, Virtual DSM |
+| `github-backup-1.0.7-armv8.spk` | `armv8` | ARM 64-bit (rtd1296, armada37xx, rtd1619) |
+| `github-backup-1.0.7-armada38x.spk` | `armada38x` | **DS216j**, DS216, DS416j u. a. (ARMv7 32-bit) |
+| `github-backup-1.0.7-armv7.spk` | `armv7` | Alpine/Alpine4k |
 
-Für die **DS216j mit DSM 7.0.1** ist `github-backup-1.0.6-armada38x.spk` die richtige Datei.
+Für die **DS216j mit DSM 7.0.1** ist `github-backup-1.0.7-armada38x.spk` die richtige Datei.
 
 ---
 
@@ -49,17 +49,17 @@ Nach der Installation erscheint **GitHub Backup** im DSM-Hauptmenü. Darüber ö
 
 ### Wenn die App nicht öffnet
 
-Die UI ist eine DSM-App (statische Dateien unter `/webman/3rdparty/github-backup/`), die API läuft als DSM-WebAPI-CGI (`webapi-desc`). Prüfen:
+Die UI ist eine DSM-App (statische Dateien unter `/webman/3rdparty/github-backup/`), die API läuft als Paket-CGI (`ui/api.cgi`). Prüfen:
 
 ```sh
 ls -l /usr/syno/synoman/webman/3rdparty/github-backup
-ls -l /usr/syno/synoman/webapi/github-backup
+ls -l /usr/syno/synoman/webman/3rdparty/github-backup/api.cgi
 ls -l /tmp/github-backup-ui.sock
 tail -50 /var/log/synoscgi.log
 tail -50 /var/packages/github-backup/var/daemon.log
 ```
 
-Bei `502` fehlt meist der Dienst/Socket; bei `404` wurde der `webapi-desc`-Link nicht angelegt. Es gibt **keinen** nginx-`web-config`-Eintrag und keinen zusätzlichen TCP-Port.
+Bei `502` fehlt meist der Dienst/Socket; bei `404` fehlt der App-Link oder `ui/api.cgi` ist nicht ausführbar. Es gibt **keinen** nginx-`web-config`-Eintrag, keinen `webapi-desc`-Eintrag und keinen zusätzlichen TCP-Port.
 
 Der interne Paketbenutzer `sc-github-backup` bekommt über die `data-share`-Resource automatisch Zugriff auf den Share **`backup`**; `backup/github` wird darin angelegt. Bei einem Ziel außerhalb von `backup` müssen die Rechte manuell gesetzt werden.
 
@@ -136,7 +136,7 @@ Paket-Konfiguration und UI-Socket:
 /var/packages/github-backup/var/daemon.log
 ```
 
-Die UI-Dateien werden von DSM ausgeliefert. Die API läuft als DSM-WebAPI-CGI (`webapi-desc`) und spricht den Hintergrunddienst über einen **Unix-Socket** an. Es gibt keinen TCP-Port für die UI.
+Die UI-Dateien und die CGI-Bridge (`ui/api.cgi`) werden von DSM aus dem App-Ordner ausgeliefert. Die CGI-Bridge spricht den Hintergrunddienst über einen **Unix-Socket** an. Es gibt keinen TCP-Port für die UI.
 
 ---
 
@@ -184,7 +184,7 @@ git -C /volume1/backup/github/wikis/OWNER/REPO.git push --mirror \
 - bare Mirrors, alle Ref-/Branch-/Tag-Refs
 - optional Wikis
 - wöchentlicher Scheduler im Dienst
-- UI als DSM-App-Fenster (`dsmuidir`), API als DSM-WebAPI-CGI (`webapi-desc`), **kein eigener Port**
+- UI als DSM-App-Fenster (`dsmuidir`), API als Paket-CGI (`ui/api.cgi`), **kein eigener Port**
 - `data-share` für `backup`
 
 ---
@@ -196,7 +196,7 @@ Voraussetzungen: Go 1.21+, `tar`, `md5sum`.
 ```bash
 cd ghbackup
 ./build.sh
-# -> dist/github-backup-1.0.6-{x86_64,armv8,armv7,armada38x}.spk
+# -> dist/github-backup-1.0.7-{x86_64,armv8,armv7,armada38x}.spk
 ```
 
 CI: `go vet`, `go test`, Go-Format, Shell-Syntax, Wizard-JSON und SPK-Build.

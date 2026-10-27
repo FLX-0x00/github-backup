@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
-VERSION="1.0.6"
+VERSION="1.0.7"
 BUILD="0001"
 PKG_VERSION="${VERSION}-${BUILD}"
 DIST="$ROOT/dist"
@@ -41,18 +41,16 @@ for spec in "${ARCHS[@]}"; do
 
   stage="$BUILD_DIR/stage-$spk_arch"
   rm -rf "$stage"
-  mkdir -p "$stage/package/bin" "$stage/package/ui" "$stage/package/webapi"
+  mkdir -p "$stage/package/bin" "$stage/package/ui"
   cp "$bin" "$stage/package/bin/github-backup"
   chmod 0755 "$stage/package/bin/github-backup"
   cp "$ROOT/web/index.html" "$stage/package/ui/index.html"
   cp "$ROOT/web/app.css" "$stage/package/ui/app.css"
   cp "$ROOT/web/app.js" "$stage/package/ui/app.js"
   cp -a "$ROOT/ui/." "$stage/package/ui/"
-  cp "$ROOT/webapi/GitHubBackup.api" "$stage/package/webapi/GitHubBackup.api"
-  cp "$ROOT/webapi/api.cgi" "$stage/package/webapi/api.cgi"
-  chmod 0755 "$stage/package/webapi/api.cgi"
+  chmod 0755 "$stage/package/ui/api.cgi"
 
-  ( cd "$stage/package" && tar -czf "$stage/package.tgz" bin ui webapi )
+  ( cd "$stage/package" && tar -czf "$stage/package.tgz" bin ui )
 
   spk="$BUILD_DIR/spk-$spk_arch"
   mkdir -p "$spk/conf" "$spk/scripts" "$spk/WIZARD_UIFILES"
