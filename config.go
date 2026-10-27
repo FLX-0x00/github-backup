@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	appVersion = "1.0.8"
+	appVersion = "1.1.0"
 	configVer  = 1
 )
 

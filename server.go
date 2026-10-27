@@ -302,7 +302,7 @@ func (a *serverApp) authMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		user, err := dsmUser(r)
+		user, err := requestUser(r)
 		if err != nil || user == "" {
 			jsonError(w, http.StatusUnauthorized, "Nicht in DSM angemeldet.")
 			return
@@ -320,6 +320,17 @@ func (a *serverApp) authMiddleware(next http.Handler) http.Handler {
 		r.Header.Set("X-DSM-User", user)
 		next.ServeHTTP(w, r)
 	})
+}
+
+func requestUser(r *http.Request) (string, error) {
+	if r.Header.Get("X-GitHub-Backup-CGI") == "1" {
+		user := strings.TrimSpace(r.Header.Get("X-DSM-User"))
+		if user == "" {
+			return "", errors.New("CGI-Benutzer fehlt")
+		}
+		return user, nil
+	}
+	return dsmUser(r)
 }
 
 func dsmUser(r *http.Request) (string, error) {
@@ -381,7 +392,7 @@ func isAdmin(user string) bool {
 }
 
 func (a *serverApp) handleSession(w http.ResponseWriter, r *http.Request) {
-	user, err := dsmUser(r)
+	user, err := requestUser(r)
 	if err != nil || user == "" {
 		jsonError(w, http.StatusUnauthorized, "Nicht in DSM angemeldet.")
 		return

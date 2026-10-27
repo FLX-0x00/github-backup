@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -49,5 +51,40 @@ func TestRunStateLifecycle(t *testing.T) {
 	view = s.View()
 	if view.Running || view.Status != "success" || view.Done != 2 || view.LogPath != "/tmp/run.log" {
 		t.Fatalf("unexpected finished view: %+v", view)
+	}
+}
+
+func TestCgiAuthEnvOverridesQueryString(t *testing.T) {
+	env := cgiAuthEnv("QUERY_STRING=SynoToken=abc123")
+	count := 0
+	value := ""
+	for _, e := range env {
+		if strings.HasPrefix(e, "QUERY_STRING=") {
+			count++
+			value = strings.TrimPrefix(e, "QUERY_STRING=")
+		}
+	}
+	if count != 1 || value != "SynoToken=abc123" {
+		t.Fatalf("QUERY_STRING override failed: count=%d value=%q", count, value)
+	}
+}
+
+func TestCgiDSMUserLoginTokenFlow(t *testing.T) {
+	dir := t.TempDir()
+	login := dir + "/login.cgi"
+	auth := dir + "/authenticate.cgi"
+	if err := os.WriteFile(login, []byte("#!/bin/sh\necho '{\"success\":true,\"SynoToken\":\"tok123\",\"username\":\"admin\"}'\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(auth, []byte("#!/bin/sh\ncase \"$QUERY_STRING\" in *SynoToken=tok123*) echo admin ;; esac\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	oldLogin, oldAuth := dsmLoginCGI, dsmAuthenticateCGI
+	dsmLoginCGI, dsmAuthenticateCGI = login, auth
+	defer func() { dsmLoginCGI, dsmAuthenticateCGI = oldLogin, oldAuth }()
+	t.Setenv("GITHUB_BACKUP_DEV_USER", "")
+	user, err := cgiDSMUser()
+	if err != nil || user != "admin" {
+		t.Fatalf("user=%q err=%v", user, err)
 	}
 }

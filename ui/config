@@ -1,12 +1,24 @@
 {
-  ".url": {
+  "GitHubBackup.js": {
     "com.evait.githubbackup": {
-      "type": "url",
-      "icon": "images/icon_{0}.png",
+      "type": "app",
       "title": "GitHub Backup",
+      "appWindow": "com.evait.githubbackup.MainWindow",
       "desc": "GitHub-Repositories sichern und verwalten",
-      "url": "/webman/3rdparty/github-backup/index.html",
-      "allUsers": false
-    }
+      "icon": "images/icon_{0}.png",
+      "allowMultiInstance": false,
+      "allowStandalone": true,
+      "allUsers": false,
+      "grantPrivilege": "all",
+      "advanceGrantPrivilege": true,
+      "depend": ["com.evait.githubbackup.MainWindow"]
+    },
+    "com.evait.githubbackup.MainWindow": {
+      "type": "lib",
+      "title": "GitHub Backup",
+      "icon": "images/icon_{0}.png",
+      "depend": ["com.evait.githubbackup.Utils"]
+    },
+    "com.evait.githubbackup.Utils": []
   }
 }
