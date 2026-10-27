@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+      - name: Go vet
+        run: go vet ./...
+      - name: Go test
+        run: go test ./...
+      - name: Go format check
+        run: test -z "$(gofmt -l .)"
+      - name: Shell syntax
+        run: |
+          for f in build.sh spk/scripts/*; do sh -n "$f"; done
+      - name: JSON validation
+        run: |
+          for f in spk/conf/privilege spk/conf/resource spk/WIZARD_UIFILES/install_uifile*; do
+            jq empty "$f"
+          done
+      - name: Build SPKs
+        run: ./build.sh

@@ -1,0 +1,15 @@
+{
+    "data-share": {
+        "shares": [
+            {
+                "name": "backup",
+                "permission": {
+                    "rw": [
+                        "sc-github-backup"
+                    ]
+                },
+                "once": false
+            }
+        ]
+    }
+}

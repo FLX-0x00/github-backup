@@ -1,0 +1,19 @@
+# build outputs
+/dist/
+/build/
+/github-backup
+/ghbackup
+*.spk
+*.zip
+*.tar.gz
+
+# runtime secrets/state
+config.json
+*.key
+askpass.sh
+daemon.pid
+*.log
+
+# OS/editor
+.DS_Store
+*.swp

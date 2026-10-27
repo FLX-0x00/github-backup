@@ -1,0 +1,111 @@
+#!/bin/sh
+set -eu
+LD_LIBRARY_PATH="/var/packages/Git/target/lib:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH
+
+PKG_NAME="github-backup"
+PKG_USER="sc-github-backup"
+VAR="${SYNOPKG_PKGVAR:-/var/packages/$PKG_NAME/var}"
+CONFIG="$VAR/config.json"
+INSTALL="$VAR/install"
+
+# Upgrades keep the existing config. A fresh install gets the wizard values;
+# if an old config survived an uninstall, it is removed and replaced.
+if [ -e "$CONFIG" ] && [ ! -s "$CONFIG" ]; then
+    rm -f "$CONFIG"
+fi
+if [ -s "$CONFIG" ]; then
+    if [ "${SYNOPKG_PKG_STATUS:-}" = "UPGRADE" ]; then
+        exit 0
+    fi
+    rm -f "$CONFIG"
+fi
+
+TOKEN="${wizard_token:-}"
+KIND_LABEL="${wizard_kind:-Classic}"
+OWNER="${wizard_owner:-}"
+STORAGE="${wizard_storage:-/volume1/backup/github}"
+REPOS="${wizard_repos:-}"
+WEEKDAY_LABEL="${wizard_weekday:-Sonntag}"
+HOUR="${wizard_hour:-3}"
+MINUTE="${wizard_minute:-0}"
+
+case "$KIND_LABEL" in
+    Classic*|classic*) KIND="classic" ;;
+    *Org*|*org*) KIND="org" ;;
+    *User*|*user*) KIND="user" ;;
+    *) KIND="classic" ;;
+esac
+
+case "$WEEKDAY_LABEL" in
+    Sonntag|Sunday) WEEKDAY=0 ;;
+    Montag|Monday) WEEKDAY=1 ;;
+    Dienstag|Tuesday) WEEKDAY=2 ;;
+    Mittwoch|Wednesday) WEEKDAY=3 ;;
+    Donnerstag|Thursday) WEEKDAY=4 ;;
+    Freitag|Friday) WEEKDAY=5 ;;
+    Samstag|Saturday) WEEKDAY=6 ;;
+    *) WEEKDAY=0 ;;
+esac
+
+HOUR=$(printf '%s' "$HOUR" | sed 's/^0*//')
+[ -n "$HOUR" ] || HOUR=0
+MINUTE=$(printf '%s' "$MINUTE" | sed 's/^0*//')
+[ -n "$MINUTE" ] || MINUTE=0
+case "$HOUR" in *[!0-9]*|'') HOUR=3 ;; esac
+case "$MINUTE" in *[!0-9]*|'') MINUTE=0 ;; esac
+[ "$HOUR" -ge 0 ] 2>/dev/null && [ "$HOUR" -le 23 ] || HOUR=3
+[ "$MINUTE" -ge 0 ] 2>/dev/null && [ "$MINUTE" -le 59 ] || MINUTE=0
+
+bool_value() {
+    value="$1"
+    default="$2"
+    case "$value" in
+        true|True|1|yes|Yes) echo "true" ;;
+        false|False|0|no|No) echo "false" ;;
+        *) echo "$default" ;;
+    esac
+}
+
+WIKIS=$(bool_value "${wizard_wikis:-}" "true")
+LFS=$(bool_value "${wizard_lfs:-}" "false")
+PRUNE=$(bool_value "${wizard_prune:-}" "false")
+NOTIFY=$(bool_value "${wizard_notify:-}" "true")
+SCHEDULE=$(bool_value "${wizard_schedule:-}" "true")
+
+if ! id "$PKG_USER" >/dev/null 2>&1; then
+    echo "FEHLER: Paketbenutzer $PKG_USER wurde nicht angelegt." >&2
+    exit 1
+fi
+
+if ! mkdir -p "$INSTALL"; then
+    echo "FEHLER: Paketordner $INSTALL ist nicht beschreibbar." >&2
+    exit 1
+fi
+chmod 700 "$INSTALL" 2>/dev/null || true
+
+write_value() {
+    printf '%s\n' "$2" >"$INSTALL/$1"
+    chmod 600 "$INSTALL/$1" 2>/dev/null || true
+}
+
+write_value token "$TOKEN"
+write_value kind "$KIND"
+write_value owner "$OWNER"
+write_value storage "$STORAGE"
+write_value repos "$REPOS"
+write_value weekday "$WEEKDAY"
+write_value hour "$HOUR"
+write_value minute "$MINUTE"
+write_value wikis "$WIKIS"
+write_value lfs "$LFS"
+write_value prune "$PRUNE"
+write_value notify "$NOTIFY"
+write_value schedule "$SCHEDULE"
+write_value api_base "${GITHUB_API_BASE:-https://api.github.com}"
+
+# The actual config (and the data directory) is created on first start, after
+# DSM has applied the data-share permission for the package user.
+echo "Konfiguration wird beim ersten Start angelegt."
+
+exit 0

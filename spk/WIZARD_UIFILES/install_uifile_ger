@@ -1,0 +1,185 @@
+[
+    {
+        "step_title": "GitHub-Zugang",
+        "invalid_next_disabled": true,
+        "items": [
+            {
+                "desc": "Dieses Paket spiegelt alle Repositories, auf die der Token Zugriff hat, als bare Git-Mirrors. Ein <b>Classic Token</b> mit den Scopes <b>repo</b> und <b>read:org</b> deckt alle eigenen Konten und Organisationen in einem Lauf ab. Fine-grained Tokens gelten nur für <b>einen</b> Owner (User oder eine Org); für mehrere Orgs lege nach der Installation weitere Verbindungen per CLI an."
+            },
+            {
+                "type": "password",
+                "subitems": [
+                    {
+                        "key": "wizard_token",
+                        "desc": "Personal Access Token",
+                        "validator": {
+                            "allowBlank": false,
+                            "minLength": 20
+                        }
+                    }
+                ]
+            },
+            {
+                "type": "combobox",
+                "subitems": [
+                    {
+                        "key": "wizard_kind",
+                        "desc": "Token-Typ",
+                        "editable": false,
+                        "defaultValue": "Classic (alle Konten/Orgs)",
+                        "store": [
+                            "Classic (alle Konten/Orgs)",
+                            "Fine-grained (ein User)",
+                            "Fine-grained (eine Org)"
+                        ]
+                    }
+                ]
+            },
+            {
+                "type": "textfield",
+                "subitems": [
+                    {
+                        "key": "wizard_owner",
+                        "desc": "Owner/Org (nur bei fine-grained Org)",
+                        "defaultValue": "",
+                        "validator": {
+                            "allowBlank": true,
+                            "regex": {
+                                "expr": "/^[A-Za-z0-9_.-]*$/",
+                                "errorText": "Nur Buchstaben, Zahlen, Punkt, Bindestrich und Unterstrich."
+                            }
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "step_title": "Ziel und Zeitplan",
+        "invalid_next_disabled": true,
+        "items": [
+            {
+                "type": "textfield",
+                "subitems": [
+                    {
+                        "key": "wizard_storage",
+                        "desc": "Speicherort (absoluter Pfad; bei anderem Volume z. B. /volume2/backup/github). Der Share backup wird beim ersten Start automatisch angelegt bzw. für sc-github-backup freigegeben; backup/github wird darin erstellt. Bei einem anderen Pfad außerhalb von backup sind manuelle Rechte nötig.",
+                        "defaultValue": "/volume1/backup/github",
+                        "validator": {
+                            "allowBlank": false,
+                            "regex": {
+                                "expr": "/^\\/.*$/",
+                                "errorText": "Bitte einen absoluten Pfad angeben."
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "type": "combobox",
+                "subitems": [
+                    {
+                        "key": "wizard_weekday",
+                        "desc": "Wochentag",
+                        "editable": false,
+                        "defaultValue": "Sonntag",
+                        "store": [
+                            "Sonntag",
+                            "Montag",
+                            "Dienstag",
+                            "Mittwoch",
+                            "Donnerstag",
+                            "Freitag",
+                            "Samstag"
+                        ]
+                    }
+                ]
+            },
+            {
+                "type": "textfield",
+                "subitems": [
+                    {
+                        "key": "wizard_hour",
+                        "desc": "Stunde (0-23)",
+                        "defaultValue": "3",
+                        "validator": {
+                            "allowBlank": false,
+                            "regex": {
+                                "expr": "/^([01]?[0-9]|2[0-3])$/",
+                                "errorText": "Stunde muss zwischen 0 und 23 liegen."
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "type": "textfield",
+                "subitems": [
+                    {
+                        "key": "wizard_minute",
+                        "desc": "Minute (0-59)",
+                        "defaultValue": "0",
+                        "validator": {
+                            "allowBlank": false,
+                            "regex": {
+                                "expr": "/^([0-5]?[0-9])$/",
+                                "errorText": "Minute muss zwischen 0 und 59 liegen."
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "type": "multiselect",
+                "subitems": [
+                    {
+                        "key": "wizard_schedule",
+                        "desc": "Wöchentlichen Zeitplan aktivieren",
+                        "defaultValue": true
+                    },
+                    {
+                        "key": "wizard_wikis",
+                        "desc": "Wikis mitsichern",
+                        "defaultValue": true
+                    },
+                    {
+                        "key": "wizard_lfs",
+                        "desc": "Git-LFS-Objekte mitsichern (git-lfs erforderlich)",
+                        "defaultValue": false
+                    },
+                    {
+                        "key": "wizard_prune",
+                        "desc": "Gelöschte Branches auch im Backup löschen",
+                        "defaultValue": false
+                    },
+                    {
+                        "key": "wizard_notify",
+                        "desc": "DSM-Benachrichtigung nach dem Lauf",
+                        "defaultValue": true
+                    }
+                ]
+            },
+            {
+                "type": "textfield",
+                "subitems": [
+                    {
+                        "key": "wizard_repos",
+                        "desc": "Optional: nur diese Repos (kommagetrennt, leer = alle inkl. neuer)",
+                        "defaultValue": "",
+                        "validator": {
+                            "allowBlank": true
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "step_title": "Fertig",
+        "items": [
+            {
+                "desc": "Nach der Installation startet der Dienst und führt den ersten Backup-Lauf aus. Den Fortschritt findest du im Paketordner unter <b>logs/</b> sowie in den DSM-Benachrichtigungen. Weitere Verbindungen und die Repo-Auswahl lassen sich später per SSH mit <b>github-backup add-connection</b> bzw. <b>github-backup select</b> verwalten."
+            }
+        ]
+    }
+]

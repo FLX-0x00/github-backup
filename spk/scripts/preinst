@@ -1,0 +1,143 @@
+#!/bin/sh
+set -eu
+
+PKG_NAME="github-backup"
+PKG_VAR="${SYNOPKG_PKGVAR:-/var/packages/$PKG_NAME/var}"
+CONFIG="$PKG_VAR/config.json"
+
+# Upgrades use upgrade_uifile (none here) and must keep the existing config.
+if [ -s "$CONFIG" ] && [ "${SYNOPKG_PKG_STATUS:-}" != "INSTALL" ]; then
+    exit 0
+fi
+
+PATH="/var/packages/Git/target/bin:/opt/bin:/usr/local/bin:/usr/syno/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+export PATH
+LD_LIBRARY_PATH="/var/packages/Git/target/lib:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH
+
+log() {
+    echo "$*" >&2
+    if [ -n "${SYNOPKG_TEMP_LOGFILE:-}" ]; then
+        echo "$*" >>"$SYNOPKG_TEMP_LOGFILE" 2>/dev/null || true
+    fi
+}
+fail() {
+    log "FEHLER: $*"
+    exit 1
+}
+
+TOKEN="${wizard_token:-}"
+KIND_LABEL="${wizard_kind:-Classic}"
+OWNER="${wizard_owner:-}"
+STORAGE="${wizard_storage:-/volume1/backup/github}"
+
+[ -n "$TOKEN" ] || fail "Kein GitHub Token angegeben."
+[ "${#TOKEN}" -ge 20 ] || fail "Der GitHub Token ist zu kurz."
+
+case "$KIND_LABEL" in
+    Classic*|classic*) KIND="classic" ;;
+    *Org*|*org*) KIND="org" ;;
+    *User*|*user*) KIND="user" ;;
+    *) KIND="classic" ;;
+esac
+
+case "$TOKEN" in
+    github_pat_*)
+        [ "$KIND" != "classic" ] || fail "Ein fine-grained Token kann nicht als 'Classic (alle Konten/Orgs)' verwendet werden. Bitte den Token-Typ auf Fine-grained stellen."
+        ;;
+esac
+
+if [ "$KIND" = "org" ]; then
+    [ -n "$OWNER" ] || fail "Bei einem Fine-grained Org-Token muss die Organisation angegeben werden."
+    case "$OWNER" in
+        *[!A-Za-z0-9_.-]*) fail "Ungültiger Organisationsname." ;;
+    esac
+fi
+
+case "$STORAGE" in
+    /*) ;;
+    *) fail "Der Speicherort muss ein absoluter Pfad sein." ;;
+esac
+
+command -v git >/dev/null 2>&1 || fail "Git ist nicht installiert. Bitte zuerst das Synology-Paket 'Git Server' installieren."
+command -v curl >/dev/null 2>&1 || fail "curl ist nicht verfügbar."
+case "${wizard_lfs:-false}" in
+    true|True|1|yes|Yes)
+        command -v git-lfs >/dev/null 2>&1 || fail "Git-LFS ist aktiviert, aber git-lfs ist nicht installiert."
+        ;;
+esac
+
+API="${GITHUB_API_BASE:-https://api.github.com}"
+if [ "$KIND" = "org" ]; then
+    URL="$API/orgs/$OWNER"
+else
+    URL="$API/user"
+fi
+
+TMP_BODY=$(mktemp)
+TMP_HDR=$(mktemp)
+trap 'rm -f "$TMP_BODY" "$TMP_HDR"' EXIT
+
+set +e
+HTTP_CODE=$(printf '%s\n' \
+    'silent' \
+    'show-error' \
+    'connect-timeout = 20' \
+    'max-time = 60' \
+    'header = "Accept: application/vnd.github+json"' \
+    "header = \"Authorization: Bearer $TOKEN\"" \
+    'header = "X-GitHub-Api-Version: 2022-11-28"' \
+    'header = "User-Agent: synology-github-backup"' \
+    "url = \"$URL\"" | curl -K - -D "$TMP_HDR" -o "$TMP_BODY" -w '%{http_code}')
+CURL_RC=$?
+set -e
+
+if [ "$CURL_RC" -ne 0 ]; then
+    fail "GitHub API nicht erreichbar (curl Fehler $CURL_RC)."
+fi
+if [ "$HTTP_CODE" != "200" ]; then
+    MSG=$(tr '\n' ' ' <"$TMP_BODY" | cut -c1-300)
+    fail "GitHub Token/Verbindung ungültig (HTTP $HTTP_CODE): $MSG"
+fi
+
+SCOPES=$(awk 'tolower($1) ~ /^x-oauth-scopes:/ { sub(/^[^:]*:[[:space:]]*/, ""); print }' "$TMP_HDR" | tr -d '\r' | head -n 1)
+if [ -n "$SCOPES" ]; then
+    if ! printf '%s\n' "$SCOPES" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -qx 'repo'; then
+        fail "Dem classic Token fehlt der Scope 'repo'. Bitte Token mit repo + read:org neu erzeugen."
+    fi
+    if ! printf '%s\n' "$SCOPES" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -qx 'read:org'; then
+        log "WARNUNG: Token hat keinen 'read:org' Scope; Org-Repos können fehlen."
+    fi
+fi
+
+if [ "$KIND" = "org" ]; then
+    REPO_URL="$API/orgs/$OWNER/repos?per_page=1&type=all"
+elif [ "$KIND" = "user" ]; then
+    REPO_URL="$API/user/repos?per_page=1&affiliation=owner"
+else
+    REPO_URL="$API/user/repos?per_page=1&affiliation=owner,organization_member,collaborator"
+fi
+
+set +e
+HTTP_CODE=$(printf '%s\n' \
+    'silent' \
+    'show-error' \
+    'connect-timeout = 20' \
+    'max-time = 60' \
+    'header = "Accept: application/vnd.github+json"' \
+    "header = \"Authorization: Bearer $TOKEN\"" \
+    'header = "X-GitHub-Api-Version: 2022-11-28"' \
+    'header = "User-Agent: synology-github-backup"' \
+    "url = \"$REPO_URL\"" | curl -K - -o "$TMP_BODY" -w '%{http_code}')
+CURL_RC=$?
+set -e
+
+if [ "$CURL_RC" -ne 0 ]; then
+    fail "GitHub API nicht erreichbar (curl Fehler $CURL_RC)."
+fi
+if [ "$HTTP_CODE" != "200" ]; then
+    MSG=$(tr '\n' ' ' <"$TMP_BODY" | cut -c1-300)
+    fail "Token hat keinen Lesezugriff auf Repositories (HTTP $HTTP_CODE): $MSG"
+fi
+
+exit 0
