@@ -104,7 +104,7 @@
   function render() {
     const d = state.data;
     if (!d) return;
-    $("#version").textContent = "v1.0.7";
+    $("#version").textContent = "v1.0.8";
     $("#statRepos").textContent = d.stats?.repos ?? "–";
     $("#statWikis").textContent = `${d.stats?.wikis ?? 0} Wikis`;
     $("#statConns").textContent = d.connections?.length ?? 0;
