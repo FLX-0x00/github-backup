@@ -82,15 +82,15 @@ Wichtige Flags:
   --hour           0-23 (Default: 3)
   --minute         0-59 (Default: 0)
   --no-schedule    Zeitplan deaktivieren
-  --wikis          1|0 (Default: 1)
-  --lfs            1|0 (Default: 0)
-  --prune          1|0 (Default: 0)
-  --notify         1|0 (Default: 1)
+  --wikis=1|0      (Default: 1)
+  --lfs=1|0        (Default: 0)
+  --prune=1|0      (Default: 0)
+  --notify=1|0     (Default: 1)
   --token-file     Token-Datei (sonst Umgebungsvariable GITHUB_TOKEN)
 
 Beispiel:
   GITHUB_TOKEN=ghp_xxx github-backup init --kind classic \
-    --data-root /volume1/backup/github --weekday 0 --hour 3 --minute 0 --wikis 1
+    --data-root /volume1/backup/github --weekday 0 --hour 3 --minute 0 --wikis=1
 `)
 }
 
