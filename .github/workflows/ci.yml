@@ -23,7 +23,8 @@ jobs:
         run: test -z "$(gofmt -l .)"
       - name: Shell syntax
         run: |
-          for f in build.sh spk/scripts/*; do sh -n "$f"; done
+          bash -n build.sh
+          for f in spk/scripts/*; do sh -n "$f"; done
       - name: JSON validation
         run: |
           for f in spk/conf/privilege spk/conf/resource spk/WIZARD_UIFILES/install_uifile*; do
