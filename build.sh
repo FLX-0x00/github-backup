@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
-VERSION="1.1.2"
+VERSION="1.1.3"
 BUILD="0001"
 PKG_VERSION="${VERSION}-${BUILD}"
 DIST="$ROOT/dist"
@@ -90,7 +90,7 @@ distributor_url="https://evait.de"
 ctl_stop="yes"
 reloadui="yes"
 dsmuidir="ui"
-dsmappname="com.evait.githubbackup.Application"
+dsmappname="com.evait.githubbackup"
 checksum="$checksum"
 EOF
 

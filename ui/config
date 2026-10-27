@@ -1,6 +1,6 @@
 {
   "GitHubBackup.js": {
-    "com.evait.githubbackup.Application": {
+    "com.evait.githubbackup": {
       "type": "app",
       "title": "GitHub Backup",
       "appWindow": "com.evait.githubbackup.MainWindow",

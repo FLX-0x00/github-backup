@@ -1,6 +1,6 @@
 Ext.namespace("com.evait.githubbackup.Utils");
 
-Ext.define("com.evait.githubbackup.Application", {
+Ext.define("com.evait.githubbackup", {
     extend: "SYNO.SDS.AppInstance",
     appWindowName: "com.evait.githubbackup.MainWindow",
     constructor: function () {
@@ -37,8 +37,7 @@ Ext.define("com.evait.githubbackup.MainWindow", {
     }
 });
 
-Ext.apply(com.evait.githubbackup.Utils, function () {
-    return {
+com.evait.githubbackup.Utils = {
         getMainHtml: function () {
             var token = "";
             try {
@@ -58,5 +57,4 @@ Ext.apply(com.evait.githubbackup.Utils, function () {
             return '<iframe src="/webman/3rdparty/github-backup/index.html' + query +
                 '" title="GitHub Backup" style="width:100%;height:100%;border:0;display:block"></iframe>';
         }
-    };
-}());
+};
