@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
-VERSION="1.1.1"
+VERSION="1.1.2"
 BUILD="0001"
 PKG_VERSION="${VERSION}-${BUILD}"
 DIST="$ROOT/dist"
@@ -15,6 +15,7 @@ command -v tar >/dev/null || { echo "tar fehlt" >&2; exit 1; }
 
 gofmt -w ./*.go
 go vet ./...
+go test ./...
 rm -rf "$BUILD_DIR" "$DIST"
 mkdir -p "$BUILD_DIR" "$DIST"
 
@@ -89,7 +90,7 @@ distributor_url="https://evait.de"
 ctl_stop="yes"
 reloadui="yes"
 dsmuidir="ui"
-dsmappname="com.evait.githubbackup"
+dsmappname="com.evait.githubbackup.Application"
 checksum="$checksum"
 EOF
 

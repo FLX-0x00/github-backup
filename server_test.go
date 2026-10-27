@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -86,5 +88,50 @@ func TestCgiDSMUserLoginTokenFlow(t *testing.T) {
 	user, err := cgiDSMUser("")
 	if err != nil || user != "admin" {
 		t.Fatalf("user=%q err=%v", user, err)
+	}
+}
+
+func TestUIConfigAppClassExists(t *testing.T) {
+	data, err := os.ReadFile("ui/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var files map[string]map[string]json.RawMessage
+	if err := json.Unmarshal(data, &files); err != nil {
+		t.Fatal(err)
+	}
+	for file, classes := range files {
+		js, err := os.ReadFile(filepath.Join("ui", file))
+		if err != nil {
+			t.Fatalf("UI config references missing JS file %q: %v", file, err)
+		}
+		source := string(js)
+		for className, raw := range classes {
+			if strings.TrimSpace(string(raw)) == "[]" {
+				continue // namespace marker, not an Ext class
+			}
+			var meta struct {
+				Type      string   `json:"type"`
+				AppWindow string   `json:"appWindow"`
+				Depend    []string `json:"depend"`
+			}
+			if err := json.Unmarshal(raw, &meta); err != nil {
+				t.Fatalf("%s: %v", className, err)
+			}
+			defined := strings.Contains(source, `Ext.define("`+className+`"`)
+			if defined {
+				continue
+			}
+			// AppWindow is the object DSM instantiates for type:"app"; its
+			// own class must exist even if the app config key is an alias.
+			if meta.AppWindow != "" && strings.Contains(source, `Ext.define("`+meta.AppWindow+`"`) {
+				continue
+			}
+			// "Utils":[] entries are namespace markers, not Ext classes.
+			if len(meta.Depend) == 0 && meta.Type == "" {
+				continue
+			}
+			t.Errorf("UI config class %q is not defined in %s", className, file)
+		}
 	}
 }
