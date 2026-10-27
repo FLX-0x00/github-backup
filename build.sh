@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
-VERSION="1.0.4"
+VERSION="1.0.5"
 BUILD="0001"
 PKG_VERSION="${VERSION}-${BUILD}"
 DIST="$ROOT/dist"
@@ -41,11 +41,13 @@ for spec in "${ARCHS[@]}"; do
 
   stage="$BUILD_DIR/stage-$spk_arch"
   rm -rf "$stage"
-  mkdir -p "$stage/package/bin"
+  mkdir -p "$stage/package/bin" "$stage/package/web" "$stage/package/ui"
   cp "$bin" "$stage/package/bin/github-backup"
   chmod 0755 "$stage/package/bin/github-backup"
+  cp "$ROOT/web/nginx.conf" "$stage/package/web/nginx.conf"
+  cp -a "$ROOT/ui/." "$stage/package/ui/"
 
-  ( cd "$stage/package" && tar -czf "$stage/package.tgz" bin )
+  ( cd "$stage/package" && tar -czf "$stage/package.tgz" bin web ui )
 
   spk="$BUILD_DIR/spk-$spk_arch"
   mkdir -p "$spk/conf" "$spk/scripts" "$spk/WIZARD_UIFILES"
@@ -82,6 +84,10 @@ maintainer_url="https://evait.de"
 distributor="evait security GmbH"
 distributor_url="https://evait.de"
 ctl_stop="yes"
+dsmuidir="ui"
+dsmappname="com.evait.githubbackup"
+instuninst_restart_services="nginx.service"
+startstop_restart_services="nginx.service"
 checksum="$checksum"
 EOF
 

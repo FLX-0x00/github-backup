@@ -39,6 +39,8 @@ func main() {
 		err = cmdRun(args)
 	case "daemon":
 		err = cmdDaemon(args)
+	case "serve":
+		err = cmdServe(args)
 	case "test":
 		err = cmdTest(args)
 	case "config":
@@ -72,7 +74,8 @@ Befehle:
   select           Repo-Auswahl ändern (--all oder --repos "owner/repo,...")
   remove           Verbindung entfernen
   run              Backup jetzt ausführen
-  daemon           Zeitplan-Daemon (wird vom Paket gestartet)
+  daemon           Zeitplan-Daemon (ohne UI)
+  serve            UI + Zeitplan (wird vom Paket gestartet)
   test             Tokens/Verbindungen prüfen
   config           Speicherort/Optionen/Zeitplan ändern
   set-token        Token einer Verbindung ersetzen
@@ -543,7 +546,7 @@ func cmdRun(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	only := parseRepos(*connID)
-	r, err := newRunner(*config, cfg, true)
+	r, err := newRunner(*config, cfg, true, nil)
 	if err != nil {
 		return err
 	}
@@ -551,6 +554,24 @@ func cmdRun(args []string) error {
 	fmt.Printf("Status: %s, Repos: %d, neu: %d, aktualisiert: %d, Fehler: %d\n", sum.Status, sum.Total, sum.Cloned, sum.Updated, sum.Failed)
 	fmt.Printf("Log: %s\n", sum.LogPath)
 	return err
+}
+
+func cmdServe(args []string) error {
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	config := fs.String("config", defaultConfigPath(), "Konfigurationsdatei")
+	unixPath := fs.String("unix", "", "Unix-Socket für DSM-nginx")
+	pidFile := fs.String("pidfile", "", "PID-Datei")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *unixPath == "" {
+		return errors.New("--unix fehlt")
+	}
+	app, err := newServerApp(*config)
+	if err != nil {
+		return err
+	}
+	return app.serve(*unixPath, *pidFile)
 }
 
 func cmdDaemon(args []string) error {
@@ -575,7 +596,7 @@ func cmdDaemon(args []string) error {
 			fmt.Printf("Config-Fehler: %v\n", err)
 		} else if cfg.Schedule.Enabled && dueNow(cfg) && (retryAt.IsZero() || !time.Now().Before(retryAt)) {
 			fmt.Printf("Backup fällig: %s\n", time.Now().Format(time.RFC3339))
-			r, err := newRunner(*config, cfg, false)
+			r, err := newRunner(*config, cfg, false, nil)
 			if err != nil {
 				fmt.Printf("Runner-Fehler: %v\n", err)
 				retryAt = time.Now().Add(30 * time.Minute)
@@ -600,6 +621,16 @@ func cmdDaemon(args []string) error {
 }
 
 func dueNow(cfg *Config) bool {
+	hasEnabled := false
+	for _, c := range cfg.Connections {
+		if c.Enabled {
+			hasEnabled = true
+			break
+		}
+	}
+	if !hasEnabled {
+		return false
+	}
 	if cfg.LastRun == nil {
 		return true
 	}

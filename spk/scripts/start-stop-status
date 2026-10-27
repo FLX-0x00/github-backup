@@ -7,6 +7,7 @@ VAR="${SYNOPKG_PKGVAR:-/var/packages/$PKG_NAME/var}"
 BIN="$TARGET/bin/github-backup"
 PIDFILE="$VAR/daemon.pid"
 LOGFILE="$VAR/daemon.log"
+SOCKET="/tmp/github-backup-ui.sock"
 INSTALL="$VAR/install"
 HOME="$VAR/home"
 export HOME
@@ -98,7 +99,7 @@ start() {
     install_config || return 1
     [ -r "$VAR/config.json" ] || return 1
 
-    "$BIN" daemon --config "$VAR/config.json" --pidfile "$PIDFILE" >>"$LOGFILE" 2>&1 &
+    "$BIN" serve --config "$VAR/config.json" --unix "$SOCKET" --pidfile "$PIDFILE" >>"$LOGFILE" 2>&1 &
     sleep 1
     if is_running; then
         return 0
@@ -124,7 +125,7 @@ stop() {
     if kill -0 "$pid" 2>/dev/null; then
         kill -9 "$pid" 2>/dev/null || true
     fi
-    rm -f "$PIDFILE"
+    rm -f "$PIDFILE" "$SOCKET" 2>/dev/null || true
     return 0
 }
 

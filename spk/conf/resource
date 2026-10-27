@@ -11,5 +11,15 @@
                 "once": false
             }
         ]
+    },
+    "web-config": {
+        "nginx-static-config": {
+            "enable": [
+                {
+                    "type": "dsm",
+                    "relpath": "web/nginx.conf"
+                }
+            ]
+        }
     }
 }

@@ -59,11 +59,14 @@
         "invalid_next_disabled": true,
         "items": [
             {
+                "desc": "Der Share <b>backup</b> wird beim ersten Start automatisch angelegt bzw. für <b>sc-github-backup</b> freigegeben; <b>backup/github</b> wird darin erstellt. Ein Pfad außerhalb von <b>backup</b> braucht manuelle Rechte."
+            },
+            {
                 "type": "textfield",
                 "subitems": [
                     {
                         "key": "wizard_storage",
-                        "desc": "Speicherort (absoluter Pfad; bei anderem Volume z. B. /volume2/backup/github). Der Share backup wird beim ersten Start automatisch angelegt bzw. für sc-github-backup freigegeben; backup/github wird darin erstellt. Bei einem anderen Pfad außerhalb von backup sind manuelle Rechte nötig.",
+                        "desc": "Speicherort",
                         "defaultValue": "/volume1/backup/github",
                         "validator": {
                             "allowBlank": false,

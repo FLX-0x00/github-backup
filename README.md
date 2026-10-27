@@ -1,18 +1,18 @@
 # GitHub Backup für Synology DSM
 
-Natives DSM-Paket (`.spk`) für wöchentliche GitHub-Mirror-Backups. **Kein Webserver, kein Web-UI, kein Docker, kein externes Git.** Der Git-Client (go-git) ist im Paket enthalten. Die Bedienung ist der native DSM-Installationsdialog, das Paket-Icon, optionale DSM-Benachrichtigungen (best effort) und – für spätere Änderungen – ein kleines CLI.
+Natives DSM-Paket (`.spk`) für wöchentliche GitHub-Mirror-Backups – mit **DSM-App-Fenster** direkt im DSM-Webinterface. **Kein eigener Port, kein separater Webserver, kein Docker, kein externes Git.**
 
-Enthalten:
+Der Git-Client ist als **go-git** fest im Go-Binary enthalten. Es wird **kein Git Server**, kein `git`, kein `git-lfs` und keine sonstige Laufzeit-Abhängigkeit benötigt.
 
-- alle Repositories, auf die der Token Zugriff hat (eigene Repos inkl. Forks, Org-Repos, Outside-Collaborations bei classic)
-- bare Git-Mirrors mit allen Branches/Tags/Refs
-- optional Wikis
-- wöchentlicher Zeitplan (Daemon im Paket)
-- optionale DSM-Benachrichtigung nach jedem Lauf (best effort)
-- Speicherort pro Installation; pro Owner/Org wird ein eigener Unterordner angelegt
-- Repo-Auswahl optional schon im Installationsdialog, später per CLI
+Die Bedienung erfolgt vollständig über die GUI:
 
-Nicht enthalten: Issues/PRs/Discussions/Releases, GitHub-Actions-Artifacts, Packages, Submodule (nur Verweise), Branch-Protection/Secrets/Webhooks.
+- Übersicht mit Status, laufendem Backup, letztem/nächstem Lauf und Speicherstatistik
+- Verbindungen pro Konto/Org anlegen, bearbeiten, löschen, aktivieren/deaktivieren
+- Token hinterlegen, ersetzen und **testen**
+- Repositories auswählen (einzeln oder „alle inkl. zukünftiger“)
+- Backup jetzt starten und laufendes Backup abbrechen
+- Logs direkt in der GUI ansehen
+- Speicherort, Zeitplan und Optionen nachträglich ändern
 
 ---
 
@@ -20,210 +20,115 @@ Nicht enthalten: Issues/PRs/Discussions/Releases, GitHub-Actions-Artifacts, Pack
 
 | Datei | NAS-Architektur | Typisch |
 |---|---|---|
-| `github-backup-1.0.4-x86_64.spk` | `x86_64` | Intel/AMD-DS, Virtual DSM |
-| `github-backup-1.0.4-armv8.spk` | `armv8` | ARM 64-bit (rtd1296, armada37xx, rtd1619) |
-| `github-backup-1.0.4-armada38x.spk` | `armada38x` | **DS216j**, DS216, DS416j u. a. (ARMv7 32-bit) |
-| `github-backup-1.0.4-armv7.spk` | `armv7` | Alpine/Alpine4k |
+| `github-backup-1.0.5-x86_64.spk` | `x86_64` | Intel/AMD-DS, Virtual DSM |
+| `github-backup-1.0.5-armv8.spk` | `armv8` | ARM 64-bit (rtd1296, armada37xx, rtd1619) |
+| `github-backup-1.0.5-armada38x.spk` | `armada38x` | **DS216j**, DS216, DS416j u. a. (ARMv7 32-bit) |
+| `github-backup-1.0.5-armv7.spk` | `armv7` | Alpine/Alpine4k |
 
-Prüfen per SSH:
-
-```bash
-uname -m
-# x86_64 -> x86_64
-# aarch64 -> armv8
-# armv7l -> bei DS216j/armada38x: armada38x-SPK (nicht armv7)
-```
-
-Im Zweifel: DSM → Systemsteuerung → Info Center → CPU/Modell, oder die Synology-Kompatibilitätsliste „Package Arch“.
+Für die **DS216j mit DSM 7.0.1** ist `github-backup-1.0.5-armada38x.spk` die richtige Datei.
 
 ---
 
 ## 2. Installation
 
 1. Package Center → **Manual Install** → passende `.spk` wählen.
-2. Falls DSM „unbekannter Herausgeber“ meldet: Package Center → Settings → General → Trust Level auf **Any Publisher** (oder „Synology Inc. and trusted publishers“ entsprechend) stellen. Das Paket ist **nicht von Synology signiert**; das ist bei selbstgebauten SPKs normal.
+2. Bei „unbekannter Herausgeber“: Package Center → Settings → General → Trust Level auf **Any Publisher**.
 3. Im Installationsdialog ausfüllen:
    - **Token**: classic PAT mit `repo` + `read:org` (Default) oder fine-grained Token.
    - **Token-Typ**: classic / fine-grained User / fine-grained Org.
    - **Owner/Org**: nur bei fine-grained Org nötig.
-   - **Speicherort**: z. B. `/volume1/backup/github`.
+   - **Speicherort**: z. B. `/volume1/backup/github`. Das Feld ist editierbar.
    - **Wochentag/Uhrzeit**: Default Sonntag 03:00.
    - **Optionen**: Wikis, Prune, Benachrichtigung (best effort).
-   - **Repo-Auswahl**: leer = **alle inkl. zukünftiger Repos**; sonst kommagetrennte `owner/repo`-Liste.
-4. Nach der Installation startet der Dienst (falls „nach Installation starten“ gewählt) und führt den **ersten Lauf sofort** aus. Danach nach Zeitplan.
+   - **Repo-Auswahl**: leer = alle inkl. zukünftiger Repos; sonst kommagetrennte Liste.
+4. Nach der Installation startet der Dienst (falls „nach Installation ausführen“ gewählt) und führt den ersten Lauf aus.
 
-### Token
+### App öffnen
 
-**Classic (Default, empfohlen für „alles“):**
+Nach der Installation erscheint **GitHub Backup** im DSM-Hauptmenü. Darüber öffnet sich das App-Fenster. Die UI läuft über DSM-nginx auf dem normalen DSM-Port (5000/5001) – **kein eigener Port**.
+
+Der interne Paketbenutzer `sc-github-backup` bekommt über die `data-share`-Resource automatisch Zugriff auf den Share **`backup`**; `backup/github` wird darin angelegt. Bei einem Ziel außerhalb von `backup` müssen die Rechte manuell gesetzt werden.
+
+---
+
+## 3. Token
+
+### Classic (Default, für „alles“)
 
 - Scopes: `repo`, `read:org`
 - Link: <https://github.com/settings/tokens/new?scopes=repo,read:org&description=Synology%20GitHub%20Backup>
 - Für Org-SAML: Token unter *Settings → Developer settings → Personal access tokens → Configure SSO* für jede Org autorisieren.
 - Classic `repo` ist **read/write**; Token wie ein Passwort behandeln.
 
-**Fine-grained:**
+### Fine-grained
 
 - Resource Owner: dein User **oder genau eine Org**.
 - Permissions: `Contents: Read`, `Metadata: Read`.
 - Repository access: „All repositories“ (oder passende Auswahl).
-- Ein fine-grained Token kann **nicht** mehrere Organizations gleichzeitig abdecken. Für weitere Orgs nach der Installation `add-connection` verwenden.
+- Ein fine-grained Token deckt **nicht** mehrere Organizations gleichzeitig ab. Für weitere Orgs einfach in der GUI eine weitere Verbindung anlegen.
 - Org muss den Token ggf. genehmigen.
 
 ---
 
-## 3. Wo liegt was?
+## 4. GUI
+
+### Übersicht
+
+- Karten: Repositories, Wikis, Verbindungen, letzter/nächster Lauf
+- Laufender Backup-Job mit Fortschritt, aktuellem Repository und Abbrechen-Button
+- Verbindungs-Karten mit Status, letztem Lauf, Pfad und Schnellaktionen
+
+### Verbindungen
+
+- **Hinzufügen**: Classic, persönlich oder Org; Token wird beim Speichern geprüft.
+- **Bearbeiten**: Name, Modus, eigener Pfad, aktiv/inaktiv; Token kann ersetzt werden.
+- **Testen**: prüft Token und zeigt die Anzahl sichtbarer Repositories.
+- **Löschen**: entfernt nur die Verbindung; vorhandene Mirror-Daten bleiben.
+- **Repositories**: Auswahl-Dialog mit Suche, Privat/Fork/Archived-Markierungen und „Alle inkl. zukünftiger“.
+
+### Logs
+
+Jeder Lauf erzeugt eine Logdatei. In der GUI lassen sich die Läufe auflisten und direkt ansehen.
+
+### Einstellungen
+
+- Speicherort (absoluter Pfad)
+- Wochentag, Stunde, Minute, Zeitplan aktiv/inaktiv
+- Wikis, Prune, Benachrichtigung
+- Parallelität und Log-Aufbewahrung
+
+> Ein neuer Speicherort verschiebt bestehende Mirrors nicht. Neue/aktualisierte Repositories landen im neuen Pfad.
+
+---
+
+## 5. Wo liegt was?
 
 ```text
-/volume1/backup/github/                 # wizard_storage
-├── repos/<owner>/<repo>.git            # bare Mirror
-├── wikis/<owner>/<repo>.git            # optional
+/volume1/backup/github/
+├── repos/<owner>/<repo>.git
+├── wikis/<owner>/<repo>.git
 ├── meta/
 │   ├── manifest.tsv
 │   └── last-run.txt
 └── logs/
-    └── run-YYYYmmdd-HHMMSS.log
+    └── run-*.log
 ```
 
-Paket-Konfiguration:
+Paket-Konfiguration und UI-Socket:
 
 ```text
-/var/packages/github-backup/var/config.json   # 0600, enthält Token
+/var/packages/github-backup/var/config.json
+/tmp/github-backup-ui.sock
 /var/packages/github-backup/var/daemon.log
 ```
 
-Bei fine-grained Verbindungen liegt der Standardpfad unter `<storage>/<owner>/...`; classic nutzt `<storage>/repos/<owner>/...`, also pro Owner/Org einen eigenen Ordner.
-
----
-
-## 4. Später verwalten (CLI)
-
-Die CLI läuft als Paketbenutzer, damit Config/Logs nicht root gehören. Als Administrator:
-
-```bash
-sudo -u sc-github-backup env HOME=/var/packages/github-backup/var/home \
-  /var/packages/github-backup/target/bin/github-backup --help
-```
-
-Config:
-
-```bash
-/var/packages/github-backup/var/config.json
-```
-
-### Repos auflisten
-
-```bash
-sudo -u sc-github-backup env HOME=/var/packages/github-backup/var/home \
-  /var/packages/github-backup/target/bin/github-backup list \
-  --config /var/packages/github-backup/var/config.json
-```
-
-### Auswahl ändern
-
-```bash
-# nur bestimmte Repos
-sudo -u sc-github-backup env HOME=/var/packages/github-backup/var/home \
-  /var/packages/github-backup/target/bin/github-backup select \
-  --config /var/packages/github-backup/var/config.json \
-  --repos "owner/repo1,owner/repo2"
-
-# wieder alles inkl. neuer Repos
-sudo -u sc-github-backup env HOME=/var/packages/github-backup/var/home \
-  /var/packages/github-backup/target/bin/github-backup select \
-  --config /var/packages/github-backup/var/config.json --all
-```
-
-### Weitere Org/User-Verbindung (fine-grained)
-
-```bash
-# Token als Paketbenutzer in die Paket-Var legen (600)
-sudo -u sc-github-backup env HOME=/var/packages/github-backup/var/home \
-  sh -c 'umask 077; cat > /var/packages/github-backup/var/org-token'
-# Token einfügen, Ctrl-D
-
-sudo -u sc-github-backup env HOME=/var/packages/github-backup/var/home \
-  /var/packages/github-backup/target/bin/github-backup add-connection \
-  --config /var/packages/github-backup/var/config.json \
-  --kind org \
-  --owner DEINE-ORG \
-  --token-file /var/packages/github-backup/var/org-token \
-  --data-root /volume1/backup/github
-```
-
-### Ziel, Optionen und Zeitplan ändern
-
-```bash
-sudo -u sc-github-backup env HOME=/var/packages/github-backup/var/home \
-  /var/packages/github-backup/target/bin/github-backup config \
-  --config /var/packages/github-backup/var/config.json \
-  --data-root /volume1/backup/github \
-  --wikis=0 --prune=0 --notify=0 \
-  --weekday 1 --hour 4 --minute 30 --schedule=1
-```
-
-Ein neues `--data-root` verschiebt bestehende Mirrors nicht; es werden nur neue/aktualisierte Repos dort abgelegt.
-
-### Token ersetzen
-
-```bash
-# Token als Paketbenutzer in eine 600-Datei legen, dann:
-sudo -u sc-github-backup env HOME=/var/packages/github-backup/var/home \
-  /var/packages/github-backup/target/bin/github-backup set-token \
-  --config /var/packages/github-backup/var/config.json \
-  --connection "Alles (classic)" \
-  --token-file /var/packages/github-backup/var/new-token
-```
-
-### Sofort sichern
-
-```bash
-sudo -u sc-github-backup env HOME=/var/packages/github-backup/var/home \
-  /var/packages/github-backup/target/bin/github-backup run \
-  --config /var/packages/github-backup/var/config.json
-```
-
-### Verbindungen testen
-
-```bash
-sudo -u sc-github-backup env HOME=/var/packages/github-backup/var/home \
-  /var/packages/github-backup/target/bin/github-backup test \
-  --config /var/packages/github-backup/var/config.json
-```
-
-### Dienst steuern
-
-```bash
-synopkg stop github-backup && synopkg start github-backup
-synopkg stop github-backup
-synopkg start github-backup
-```
-
-Der Daemon liest die Config alle 30 Sekunden neu; Änderungen an Auswahl/Verbindungen greifen ohne Neustart.
-
----
-
-## 5. Zeitplan
-
-Der Daemon im Paket prüft alle 30 Sekunden, ob der wöchentliche Termin fällig ist. Nach einem Neustart/Stop wird ein verpasster Termin nachgeholt, sobald der Daemon wieder läuft. Der erste Lauf nach Installation erfolgt sofort.
-
-- Paket muss **gestartet** sein.
-- NAS-Hibernation kann den Daemon an der Ausführung hindern; für zuverlässige wöchentliche Backups Hibernation deaktivieren oder den Lauf manuell anstoßen.
-- Zeitplan ändern:
-
-```bash
-sudo -u sc-github-backup env HOME=/var/packages/github-backup/var/home \
-  /var/packages/github-backup/target/bin/github-backup schedule \
-  --config /var/packages/github-backup/var/config.json \
-  --weekday 0 --hour 3 --minute 0 --enable
-```
-
-`weekday`: 0=Sonntag … 6=Samstag. Der Daemon liest die Config alle 30 Sekunden neu; ein Neustart ist nicht nötig.
+Die UI läuft über einen **Unix-Socket**, der von DSM-nginx unter `/github-backup/` eingebunden wird. Es gibt keinen TCP-Port für die UI.
 
 ---
 
 ## 6. Restore
 
-Die Beispiele gelten für die Default-Classic-Verbindung. Bei fine-grained Verbindungen liegt der Mirror unter `<connection-path>/repos/<owner>/<repo>.git`; den exakten Pfad findest du in `config.json` (`data_root`, `connections[].path`).
+Die Beispiele gelten für die Default-Classic-Verbindung. Bei fine-grained Verbindungen liegt der Mirror unter `<connection-path>/repos/<owner>/<repo>.git`; den Pfad zeigt die GUI in der Verbindungs-Karte.
 
 ```bash
 git clone /volume1/backup/github/repos/OWNER/REPO.git /tmp/REPO
@@ -245,50 +150,57 @@ git -C /volume1/backup/github/wikis/OWNER/REPO.git push --mirror \
   git@github.com:OWNER/REPO.wiki.git
 ```
 
-
 ---
 
 ## 7. Sicherheit
 
-- Das Paket läuft komplett als interner DSM-Paketbenutzer `sc-github-backup` – **kein root**, auch nicht für die Installation.
-- Beim ersten Start legt DSM über `data-share` den Share **`backup`** an (falls nicht vorhanden) und gibt `sc-github-backup` automatisch Lesen/Schreiben. Danach wird `backup/github` vom Paketbenutzer erstellt.
-- Wenn du einen **anderen** Speicherort außerhalb des `backup`-Shares wählst, muss `sc-github-backup` dort manuell Lesen/Schreiben bekommen.
-- `config.json` ist `0600 sc-github-backup` und enthält den Token im Klartext (nur Paketbenutzer/root lesbar). Kein Webserver, kein Port, keine Token-Übertragung über HTTP.
-- Backup-Ordner: `0700 sc-github-backup` – private Repos sind nur für den Paketbenutzer (und root per SSH) lesbar.
+- Das Paket läuft als interner DSM-Paketbenutzer `sc-github-backup` – **kein root**.
+- `config.json` ist `0600 sc-github-backup`; das Token ist nur für den Paketbenutzer/root lesbar.
+- UI-Zugriff nur für DSM-Administratoren; die API prüft die DSM-Session und die Administratorengruppe.
+- Kein eigener Port, keine Expo­sition der UI nach außen über einen zusätzlichen Dienst.
 - Token wie ein Passwort behandeln, Ablaufdatum setzen, bei Leak widerrufen.
-- Zusätzlich **Hyper Backup** auf externe Platte/Cloud einrichten (3-2-1). Das NAS-Backup allein ist kein 3-2-1-Backup.
+- Zusätzlich **Hyper Backup** auf externe Platte/Cloud einrichten (3-2-1).
 - Restore einmal testen.
 
 ---
 
-## 8. Deinstallation
+## 8. Technik
 
-Package Center → Uninstall. Der Service wird gestoppt; **Backup-Daten bleiben** im gewählten Speicherort erhalten. `postuninst` entfernt die Paket-Config samt Token; Token danach ggf. in GitHub widerrufen.
+- Go-Binary, statisch, mit **go-git** (kein externes Git)
+- bare Mirrors, alle Ref-/Branch-/Tag-Refs
+- optional Wikis
+- wöchentlicher Scheduler im Dienst
+- UI als DSM-App-Fenster (`dsmuidir`) über DSM-nginx, **kein eigener Port**
+- `data-share` für `backup`
 
 ---
 
-## 9. Selbst bauen
+## 9. Build
 
-Voraussetzungen: Go 1.21+, `tar`, `md5sum`. Die Icons liegen fertig im Repo.
+Voraussetzungen: Go 1.21+, `tar`, `md5sum`.
 
 ```bash
 cd ghbackup
 ./build.sh
-# -> dist/github-backup-1.0.4-{x86_64,armv8,armv7,armada38x}.spk
+# -> dist/github-backup-1.0.5-{x86_64,armv8,armv7,armada38x}.spk
 ```
 
-Die Skripte unter `spk/scripts/` sind `/bin/sh`-kompatibel; das Go-Binary ist statisch (`CGO_ENABLED=0`).
+CI: `go vet`, `go test`, Go-Format, Shell-Syntax, Wizard-JSON und SPK-Build.
 
 ---
 
-## 10. Grenzen / bewusste Entscheidungen
+## 10. Grenzen
 
-- **Kein Web-UI.** Native DSM-Installation + CLI; kein Port, kein Webserver, keine zusätzliche Angriffsfläche.
-- **Repo-Auswahl im Wizard** ist eine optionale kommagetrennte Liste. Für komfortable Auswahl nach der Installation dient `list`/`select` per SSH. Ein DSM-Desktop-App-Fenster wäre ein eigener Ausbauschritt.
-- **Fine-grained = ein Owner pro Token.** Mehrere Orgs = mehrere Verbindungen (`add-connection`).
-- **Kein Issues-/PR-/Release-Backup.** Nur Git-Daten/Wikis.
-- **Submodule** werden nicht rekursiv gesichert.
-- **PR-Refs** (`refs/pull/*`) können den Mirror größer machen; `git clone --mirror` nimmt sie mit, wenn GitHub sie bewirbt.
-- **Prune** ist standardmäßig aus: gelöschte Branches bleiben im Backup. Im Wizard „Gelöschte Branches auch im Backup löschen“ aktiviert Prune.
-- **Unsigned SPK:** DSM verlangt ggf. „Any Publisher“. Eine Synology-Signatur ist ohne Synology-Developer-Account nicht möglich.
-- Der Build wurde mit Mock-API und lokalen Git-Repos getestet, nicht auf jeder DSM-Hardware. Die Paket-Lifecycle-Skripte sind syntaktisch geprüft; der erste echte Installationslauf sollte auf der Ziel-NAS erfolgen.
+- Kein Issues-/PR-/Release-Backup – nur Git-Daten und Wikis.
+- Keine Git-LFS-Objekte (bewusst, um keine externe Abhängigkeit einzuführen).
+- Submodule werden nicht rekursiv gesichert.
+- PR-Refs (`refs/pull/*`) können den Mirror größer machen.
+- Prune ist standardmäßig aus; gelöschte Refs bleiben im Backup.
+- Unsigned SPK: DSM verlangt ggf. „Any Publisher“.
+- Die echte Installation auf DSM 7.0.1/DS216j muss auf dem Zielgerät verifiziert werden.
+
+---
+
+## 11. Optional: CLI
+
+Die GUI ist der vorgesehene Weg. Für Automation/Notfälle existiert weiterhin das Binary unter `/var/packages/github-backup/target/bin/github-backup` (`config`, `set-token`, `select`, `run`, `list`, `test`). Die Config liegt unter `/var/packages/github-backup/var/config.json`.

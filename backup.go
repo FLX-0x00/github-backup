@@ -20,6 +20,125 @@ import (
 	"github.com/go-git/go-git/v5/storage/memory"
 )
 
+type RunState struct {
+	mu       sync.Mutex
+	Running  bool      `json:"running"`
+	Status   string    `json:"status"`
+	Started  time.Time `json:"started"`
+	Finished time.Time `json:"finished"`
+	Current  string    `json:"current"`
+	Total    int       `json:"total"`
+	Done     int       `json:"done"`
+	LogPath  string    `json:"log_path"`
+	Error    string    `json:"error"`
+}
+
+func newRunState() *RunState { return &RunState{Status: "idle"} }
+
+func (s *RunState) start() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.Running = true
+	s.Status = "running"
+	s.Started = time.Now()
+	s.Finished = time.Time{}
+	s.Current = ""
+	s.Total = 0
+	s.Done = 0
+	s.LogPath = ""
+	s.Error = ""
+	s.mu.Unlock()
+}
+
+func (s *RunState) addTotal(n int) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.Total += n
+	s.mu.Unlock()
+}
+
+func (s *RunState) startRepo(name string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.Current = name
+	s.mu.Unlock()
+}
+
+func (s *RunState) doneRepo() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.Done++
+	s.mu.Unlock()
+}
+
+func (s *RunState) setLog(path string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.LogPath = path
+	s.mu.Unlock()
+}
+
+func (s *RunState) finish(sum RunSummary, err error) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.Running = false
+	s.Status = sum.Status
+	s.Finished = sum.Finished
+	s.Total = sum.Total
+	s.Done = sum.Total
+	s.LogPath = sum.LogPath
+	if err != nil {
+		s.Error = err.Error()
+	}
+	s.mu.Unlock()
+}
+
+type RunStateView struct {
+	Running  bool      `json:"running"`
+	Status   string    `json:"status"`
+	Started  time.Time `json:"started"`
+	Finished time.Time `json:"finished"`
+	Current  string    `json:"current"`
+	Total    int       `json:"total"`
+	Done     int       `json:"done"`
+	LogPath  string    `json:"log_path"`
+	Error    string    `json:"error"`
+}
+
+func (s *RunState) View() RunStateView {
+	if s == nil {
+		return RunStateView{Status: "idle"}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return RunStateView{
+		Running: s.Running, Status: s.Status, Started: s.Started,
+		Finished: s.Finished, Current: s.Current, Total: s.Total,
+		Done: s.Done, LogPath: s.LogPath, Error: s.Error,
+	}
+}
+
+func (s *RunState) IsRunning() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Running
+}
+
 type RunSummary struct {
 	Status      string
 	Started     time.Time
@@ -48,12 +167,13 @@ type runner struct {
 	cfg     *Config
 	client  *githubClient
 	verbose bool
+	state   *RunState
 	logFile *os.File
 	logPath string
 	logMu   sync.Mutex
 }
 
-func newRunner(cfgPath string, cfg *Config, verbose bool) (*runner, error) {
+func newRunner(cfgPath string, cfg *Config, verbose bool, state *RunState) (*runner, error) {
 	if err := os.MkdirAll(filepath.Dir(cfgPath), 0700); err != nil {
 		return nil, err
 	}
@@ -62,6 +182,7 @@ func newRunner(cfgPath string, cfg *Config, verbose bool) (*runner, error) {
 		cfg:     cfg,
 		client:  newGitHubClient(cfg.APIBase),
 		verbose: verbose,
+		state:   state,
 	}, nil
 }
 
@@ -101,8 +222,12 @@ func (r *runner) closeLog() {
 	}
 }
 
-func (r *runner) Run(ctx context.Context, only []string, scheduled bool) (RunSummary, error) {
-	sum := RunSummary{Started: time.Now(), Status: "failed"}
+func (r *runner) Run(ctx context.Context, only []string, scheduled bool) (sum RunSummary, err error) {
+	sum = RunSummary{Started: time.Now(), Status: "failed"}
+	if r.state != nil {
+		r.state.start()
+		defer func() { r.state.finish(sum, err) }()
+	}
 	if err := ensureDataDirs(r.cfg.DataRoot); err != nil {
 		return sum, err
 	}
@@ -118,6 +243,9 @@ func (r *runner) Run(ctx context.Context, only []string, scheduled bool) (RunSum
 	}
 	defer r.closeLog()
 	sum.LogPath = r.logPath
+	if r.state != nil {
+		r.state.setLog(r.logPath)
+	}
 
 	r.logf("=== GitHub Backup start ===")
 	r.logf("Ziel: %s", r.cfg.DataRoot)
@@ -208,6 +336,9 @@ func (r *runner) Run(ctx context.Context, only []string, scheduled bool) (RunSum
 		}
 
 		r.logf("Repositories: %d (Modus: %s)", len(targets), conn.Mode)
+		if r.state != nil {
+			r.state.addTotal(len(targets))
+		}
 		results := r.backupConnection(ctx, conn, targets)
 		allResults = append(allResults, results...)
 
@@ -337,6 +468,10 @@ func (r *runner) backupRepo(ctx context.Context, conn *Connection, repo Repo) re
 	}
 
 	r.logf("  [%s] %s", conn.Owner, repo.FullName)
+	if r.state != nil {
+		r.state.startRepo(repo.FullName)
+		defer r.state.doneRepo()
+	}
 	action, err := r.mirror(ctx, conn.Token, cloneURL, dest, 12*time.Hour)
 	if err != nil {
 		res.Error = err.Error()

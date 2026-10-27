@@ -1,0 +1,12 @@
+{
+  ".url": {
+    "com.evait.githubbackup": {
+      "type": "url",
+      "icon": "images/icon_{0}.png",
+      "title": "GitHub Backup",
+      "desc": "GitHub-Repositories sichern und verwalten",
+      "url": "3rdparty/github-backup/index.html",
+      "allUsers": false
+    }
+  }
+}

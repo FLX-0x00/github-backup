@@ -59,11 +59,14 @@
         "invalid_next_disabled": true,
         "items": [
             {
+                "desc": "The <b>backup</b> share is created automatically on first start (or granted to <b>sc-github-backup</b>); <b>backup/github</b> is created inside it. A path outside <b>backup</b> needs manual permissions."
+            },
+            {
                 "type": "textfield",
                 "subitems": [
                     {
                         "key": "wizard_storage",
-                        "desc": "Storage path (absolute; use e.g. /volume2/backup/github on another volume). The backup share is created automatically on first start (or granted to sc-github-backup); backup/github is created inside it. A different path outside backup needs manual permissions.",
+                        "desc": "Storage path",
                         "defaultValue": "/volume1/backup/github",
                         "validator": {
                             "allowBlank": false,
